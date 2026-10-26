@@ -2,7 +2,19 @@
 
 Photo-based measurement of tiled surfaces, compared with a contractor's work statement. Results must show uncertainty, exclusions, and questions for human review before payment.
 
-This repository currently contains **preparation only**: folders, environment configuration, dependency setup, and model access documentation. The team schedules implementation from October 27, 2026; the exact official eligibility window still needs confirmation. No model integration, measurement implementation, or working application is claimed yet.
+The local frontend is implemented in `app/frontend/`: an inspection workspace with illustrative measurements, visual evidence, statement review, local uploads, notes, and printable reports. The measurement backend and model integrations are not connected yet. Example quantities and overlays are clearly labeled synthetic fixtures.
+
+## Run the frontend
+
+With Node.js 24 and npm:
+
+```sh
+cd app/frontend
+npm ci
+npm run dev -- --host 127.0.0.1 --port 5173
+```
+
+Open **http://127.0.0.1:5173/**. Run `npm run build` for a production build. See [frontend documentation](app/frontend/README.md) for behavior, limitations, and verification.
 
 ## Ownership and plan
 
@@ -10,7 +22,7 @@ This repository currently contains **preparation only**: folders, environment co
 - **Teammate / A:** `agent/`, `app/` including the frontend, protocol export, deployment, and submission.
 - **Shared:** `schemas/`; the draft in the team plan is awaiting agreement on October 27.
 
-The frontend already has an owner, so this preparation does not create a competing frontend.
+The frontend was implemented at the user's subsequent request. Coordinate its backend integration with teammate A; the shared measurement schemas remain unchanged.
 
 Read the [model access instructions](docs/MODEL_ACCESS.md). Team and personal planning documents are maintained locally and excluded from this repository.
 
@@ -38,7 +50,8 @@ An empty local `.env` is prepared with owner-only permissions. If creating a new
 | `measure/` | SAM client, lattice geometry, area, overlays, CLI |
 | `validation/` | Room measurements, accuracy, ROC, and ablation |
 | `agent/` | Statement parsing, planning, comparison, protocol |
-| `app/` | Teammate-owned FastAPI service and web client |
+| `app/frontend/` | Working React/Vite inspection frontend; local example mode |
+| `app/` | Future FastAPI service and integration |
 | `tests/` | Measurement and integration checks, to be implemented |
 | `data/samples/` | Consented, anonymized public fixtures only |
 | `data/private/` | Private room photos and field records; ignored |
@@ -50,9 +63,9 @@ Private photos, consent records, and room notes stay in `data/private/`. Publish
 
 ## Readiness
 
-- Preparation checks passed: locked offline dependency sync, Python 3.12 imports for all core/application libraries, valid TOML, empty credential fields, owner-only `.env` permissions, and Git exclusions for secrets/private data. Application tests await implementation.
+- Preparation checks passed: locked offline dependency sync, Python 3.12 imports for all core/application libraries, valid TOML, empty credential fields, owner-only `.env` permissions, and Git exclusions for secrets/private data. Frontend build and browser checks are documented in its README.
 - Credentials are intentionally blank; this session makes no paid model calls.
-- The missing `.claude/skills/meta-model-api/SKILL.md` is not fabricated. Official-source findings and unresolved details are recorded in `docs/MODEL_ACCESS.md`.
-- No Git remote is configured in the current checkout. Choose the team's repository before pushing; no remote, public repository, commit, or deployment is created automatically.
+- Meta API reference material is available in `.claude/skills/meta-model-api/SKILL.md`. Model access setup and unresolved details are recorded in `docs/MODEL_ACCESS.md`.
+- The repository remote is `https://github.com/Atilla888/ActCheck.git`. Frontend development runs locally; no hosted deployment has been created.
 - The acceptance gates remain: at least 16 of 20 walls with at least 30 reliable masks on October 27; at most 3% error on three rooms on October 29. Confirm whether to check each room separately during schema review.
 - Stub handoff is October 28; real measurement handoff is October 30.

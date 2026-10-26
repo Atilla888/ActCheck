@@ -1,0 +1,1 @@
+This deliberately unsupported .txt file should be rejected by the evidence uploader.
