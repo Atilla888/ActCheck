@@ -33,3 +33,6 @@ node_modules/
 # Local editor / OS files
 .DS_Store
 .idea/
+
+# Local team plan (shared via Telegram, not in repo)
+/TEAM_PLAN.md
