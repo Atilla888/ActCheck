@@ -1,0 +1,35 @@
+# Credentials and local configuration
+/PERSONAL_PLAN.md
+/TEAM_PLAN (1).md
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Private inputs, model responses, and generated artifacts
+/data/private/
+/data/cache/
+/outputs/
+/models/
+
+# Python and development tools
+.venv/
+.cache/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+build/
+dist/
+
+# Frontend tooling (owned by teammate A)
+node_modules/
+.next/
+
+# Local editor / OS files
+.DS_Store
+.idea/
