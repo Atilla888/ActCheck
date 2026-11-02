@@ -37,3 +37,7 @@ node_modules/
 
 # Local team plan (shared via Telegram, not in repo)
 /TEAM_PLAN.md
+
+# Third-party reference photos (Pexels): re-download from bathroom_tiles_20/sources.csv
+/bathroom_tiles_20/photos/
+/bathroom_tiles_20/preview.jpg
