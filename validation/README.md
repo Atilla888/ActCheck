@@ -96,3 +96,49 @@ Counts remain **candidates** until individual masks are checked against the phot
 A cropped fragment can resemble a rectangle, and a fully bounded mask can still cover a partial,
 misclassified or occluded tile. The qualitative manual review is separately hash-bound to its
 specific overlays; do not apply an old review automatically to regenerated results.
+
+## Wall measurement validation (November 2)
+
+Measurement itself lives in [`measure/`](../measure/README.md). Each check below is labelled by
+what it can and cannot show.
+
+**Synthetic walls with exact ground truth** (`synthetic.py`, `synthetic_eval.py`). Rendered
+walls under a pinhole camera: tile size, stack/running bond, joints, gloss, door, bottom
+occluder, pose. Errors are against the visible tiled area.
+
+```sh
+uv run python -m validation.synthetic_eval --mode masks --n 40   # SAM-like masks, no API
+uv run python -m validation.synthetic_eval --mode sam            # 16 renders through SAM 3.1
+```
+
+| Mode | Walls | measured | partial | unavailable | measured: median / max abs error | within 2σ |
+| --- | ---: | ---: | ---: | ---: | --- | ---: |
+| SAM-like masks (dropout ≤15 %, merges, false positives) | 40 | 35 | 3 | 2 | 0.57 % / 4.86 % | 35/35 |
+| SAM 3.1 on renders | 16 | 11 | 4 | 1 | 0.88 % / 1.33 % | 11/11 |
+
+Partial walls carry large errors by design (SAM saw part of the wall; all were flagged), and the
+25 mm mosaic render was refused. Renders are cleaner than real bathrooms: this is evidence that
+the geometry is right, not field accuracy.
+
+**Planted-inflation ROC** (`roc.py`). Bills inflated 0–30 % over known truth; the agent's rule
+`billed > measured + k·σ + hidden`, walls that are not `measured` never flag (the agent answers
+`incomplete`). At k = 2: SAM-like masks — 0 % false alarms, 92 % of ≥20 % inflations caught (hidden
+allowances absorb smaller ones); SAM renders — 1 false alarm in 15 honest bills, from a synthetic
+bathtub band SAM did not recognise (no hidden allowance). These are planted, not observed bills.
+
+```sh
+uv run python -m validation.roc outputs/synthetic_eval/roc_input_sam.json --out outputs/validation/roc_synthetic_sam.json
+```
+
+**Reference photos** (`reference_run.py`). The 20 collected web photos have no physical scale,
+so tile sizes are visual aspect guesses and no area is reported: 0 measured, 14 partial (mostly
+`wall_out_of_frame`), 6 unavailable (`too_few_tiles`: striped, small mosaic, curved wall, mixed
+planes). Overlays and a contact sheet go to `outputs/reference_run/`.
+
+**Field check** (`run_validation.py`, [FIELD_PROTOCOL.md](FIELD_PROTOCOL.md)). Laser or tape
+areas of 1–2 real walls in `data/private/rooms/rooms.csv` with one photo per wall; reports per-wall
+and per-room error and the ≤3 % gate. Not run yet: no field data exists at the time of writing.
+
+```sh
+uv run python -m validation.run_validation
+```
