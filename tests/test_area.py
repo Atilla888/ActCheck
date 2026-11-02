@@ -52,6 +52,7 @@ def test_door_opening():
     openings = [region for region in area.excluded if region.reason == "opening"]
     assert len(openings) == 1 and openings[0].label == "door"
     assert openings[0].area_m2 == pytest.approx(1.6, rel=0.05)
+    assert len(area.excluded_px["door"]) >= 1
     assert area.tiled_area_m2 == pytest.approx(render.tiled_area_m2, rel=0.01)
 
 
@@ -104,3 +105,18 @@ def test_sigma_system_formula():
     expected = area.tiled_area_m2 * (delta / 202 + delta / 102)
     assert area.sigma_system_m2 == pytest.approx(expected, rel=1e-6)
     assert tile_tolerance_mm("tape") == 1.0 and tile_tolerance_mm("user") == 1.5
+
+
+def test_strip_beside_door_and_row_gaps_are_counted():
+    wall = SyntheticWall(
+        tile_w_mm=300, tile_h_mm=150, bond="running", yaw_deg=25, pitch_deg=8,
+        door=(1500, 300, 700, 1800), occluder_h_mm=500, gloss=0.6, seed=31,
+    )  # fmt: skip
+    render = render_wall(wall)
+    size = (render.image.shape[1], render.image.shape[0])
+    concepts = {
+        "door": [fake_concept(render.door_polygon, "door", size)],
+        "bathtub": [fake_concept(render.occluder_polygon, "bathtub", size)],
+    }
+    _, area = run(wall, concepts=concepts, dropout=0.1)
+    assert area.tiled_area_m2 == pytest.approx(render.visible_tiled_area_m2, rel=0.03)

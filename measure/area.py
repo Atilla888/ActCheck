@@ -27,6 +27,7 @@ BOOTSTRAP = 64
 MAX_ACCEPTED_CELLS = 4  # larger rectified masks are walls, mirrors or merged blobs
 RECTANGULARITY_MIN = 0.75
 ANGLE_TOLERANCE_DEG = 10
+GAP_CELLS = 1.6  # missed tiles bridged along rows and columns; doors are wider
 
 
 def tile_tolerance_mm(source):
@@ -44,6 +45,7 @@ class AreaResult:
     sigma_random_m2: float
     sigma_system_m2: float
     excluded: list[ExcludedRegion] = field(default_factory=list)
+    excluded_px: dict[str, list[np.ndarray]] = field(default_factory=dict)  # label -> outlines
     region_px: list[np.ndarray] = field(default_factory=list)  # outlines, source image px
     completed_px: list[np.ndarray] = field(default_factory=list)
     partial_ids: list[str] = field(default_factory=list)
@@ -62,6 +64,12 @@ def measure_area(fit, detections, image_size, tile, concepts=None, *, seed=0):
     if grow:
         accepted = cv2.dilate(accepted.astype(np.uint8), np.ones((2 * grow + 1,) * 2, np.uint8))
     region = (cells | accepted.astype(bool)) & plane.frame
+    openings = np.zeros_like(region)
+    for concept in OPENING_CONCEPTS & set(concepts):
+        if concepts[concept]:
+            openings |= plane.mask(concepts[concept])
+    bridged = _close_gaps(region, fit, plane) & plane.frame & ~openings & ~region
+    region |= bridged
     filled = ndimage.binary_fill_holes(region)
     holes, count = ndimage.label(filled & ~region)
     completed, undetected = np.zeros_like(region), np.zeros_like(region)
@@ -73,9 +81,10 @@ def measure_area(fit, detections, image_size, tile, concepts=None, *, seed=0):
             undetected[hole] |= part
     region |= completed
     completed_cells = int(round(completed.sum() * plane.res**2 / cell_area))
+    completed |= bridged
     full = len(fit.tiles)
     area_mm2 = region.sum() * plane.res**2 + (full * cell_area - cells.sum() * plane.res**2)
-    excluded, undetected_m2 = _exclusions(region, undetected, concepts, plane)
+    excluded, excluded_px, undetected_m2 = _exclusions(region, undetected, concepts, plane)
     border = region & ~cv2.erode(region.astype(np.uint8), np.ones((3, 3), np.uint8)).astype(bool)
     inner = cv2.erode(plane.frame.astype(np.uint8), np.ones((5, 5), np.uint8)).astype(bool)
     border_fraction = float((border & ~inner).sum() / max(1, border.sum()))
@@ -92,6 +101,7 @@ def measure_area(fit, detections, image_size, tile, concepts=None, *, seed=0):
         sigma_random_m2=sigma_random / 1e6,
         sigma_system_m2=area_m2 * (delta / px + delta / py),
         excluded=excluded,
+        excluded_px=excluded_px,
         region_px=plane.outlines(region),
         completed_px=plane.outlines(completed),
         partial_ids=partial_ids,
@@ -198,22 +208,23 @@ def _erosion_mm(fit, detections, labels, plane):
 
 
 def _accept(fit, detections, labels, cells, plane):
-    """Non-lattice masks that look like coplanar tiles: rectified, aligned and near the cells."""
+    """Non-lattice masks that look like coplanar tiles: rectified, aligned and connected.
+
+    Acceptance grows outward from the matched cells through accepted tiles, so a strip of cut
+    tiles beside a door counts even when it is several tiles away from the nearest lattice cell.
+    """
     px, py = fit.pitch
     reach = max(1, int(round(max(px, py) / plane.res)))
-    near = cv2.dilate(cells.astype(np.uint8), np.ones((2 * reach + 1,) * 2, np.uint8)) > 0
+    kernel = np.ones((2 * reach + 1,) * 2, np.uint8)
     matched = {t.det_id for t in fit.tiles}
-    accepted, ids = np.zeros(plane.shape, bool), []
+    candidates = []
     for k, box in enumerate(ndimage.find_objects(labels), 1):
         detection = detections[k - 1] if k <= len(detections) else None
         if box is None or detection is None or detection["id"] in matched:
             continue
         part = labels[box] == k
         pixels = int(part.sum())
-        area = pixels * plane.res**2
-        if not 0.02 * px * py <= area <= MAX_ACCEPTED_CELLS * px * py:
-            continue
-        if (part & near[box]).sum() < 0.5 * pixels:
+        if not 0.02 * px * py <= pixels * plane.res**2 <= MAX_ACCEPTED_CELLS * px * py:
             continue
         points = np.column_stack(np.nonzero(part)[::-1]).astype(np.float32)
         (_, _), (w, h), angle = cv2.minAreaRect(points)
@@ -221,15 +232,37 @@ def _accept(fit, detections, labels, cells, plane):
             continue
         if min(angle % 90, 90 - angle % 90) > ANGLE_TOLERANCE_DEG:
             continue
-        accepted[box] |= part
-        ids.append(detection["id"])
+        candidates.append((detection["id"], box, part, pixels))
+    accepted, ids = np.zeros(plane.shape, bool), []
+    grown = cells.copy()
+    while candidates:
+        near = cv2.dilate(grown.astype(np.uint8), kernel) > 0
+        joined = [c for c in candidates if (c[2] & near[c[1]]).sum() >= 0.5 * c[3]]
+        if not joined:
+            break
+        for detection_id, box, part, _ in joined:
+            accepted[box] |= part
+            grown[box] |= part
+            ids.append(detection_id)
+        candidates = [c for c in candidates if c[0] not in set(ids)]
     return accepted, ids
+
+
+def _close_gaps(region, fit, plane):
+    """Fill gaps shorter than GAP_CELLS along tile rows and columns (missed tiles at edges)."""
+    px, py = fit.pitch
+    across = max(3, int(round(GAP_CELLS * px / plane.res)) | 1)
+    down = max(3, int(round(GAP_CELLS * py / plane.res)) | 1)
+    mask = region.astype(np.uint8)
+    rows = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((1, across), np.uint8))
+    columns = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((down, 1), np.uint8))
+    return (rows | columns).astype(bool)
 
 
 def _exclusions(region, undetected, concepts, plane):
     rows, cols = np.nonzero(region)
     claimed = region.copy()
-    excluded = []
+    excluded, outlines = [], {}
     if len(rows):
         box = np.zeros_like(region)
         box[rows.min() : rows.max() + 1, cols.min() : cols.max() + 1] = True
@@ -245,6 +278,7 @@ def _exclusions(region, undetected, concepts, plane):
             part = plane.mask(found) & plane.frame & (box if opening else band) & ~claimed
             claimed |= part
             if part.any():
+                outlines[concept] = plane.outlines(part)
                 excluded.append(
                     ExcludedRegion(
                         label=concept,
@@ -255,10 +289,11 @@ def _exclusions(region, undetected, concepts, plane):
     rest = undetected & ~claimed
     undetected_m2 = float(rest.sum() * plane.res**2 / 1e6)
     if undetected_m2 > 0:
+        outlines["undetected"] = plane.outlines(rest)
         excluded.append(
             ExcludedRegion(label="undetected", area_m2=undetected_m2, reason="not_visible")
         )
-    return excluded, undetected_m2
+    return excluded, outlines, undetected_m2
 
 
 def _sigma_random(fit, observed, region, erosion, plane, seed):
