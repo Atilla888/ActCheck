@@ -117,6 +117,7 @@ def test_no_wall_photos_is_incomplete_and_skips_measurement():
     assert c[6].verdict == "not_verifiable"  # смеситель: no count concept
     assert insp.room is None
     assert insp.protocol.overbilling_min_total == 0
+    assert insp.protocol.verifiable_share == 0  # nothing was measured
 
 
 def test_no_tile_size_skips_area():

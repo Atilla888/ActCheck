@@ -29,7 +29,7 @@ class LineComparison(BaseModel):
 class Protocol(BaseModel):
     comparisons: list[LineComparison]
     arithmetic_issues: list[ArithmeticIssue]
-    verifiable_share: float  # share of the act's amount a camera could check, 0..1
+    verifiable_share: float  # share of the act's amount compared with a measurement, 0..1
     overbilling_min_total: float
     questions: list[str]  # polite questions to the contractor, user's language
     summary: str

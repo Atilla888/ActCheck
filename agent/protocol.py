@@ -266,7 +266,8 @@ def build_protocol(
 
     amounts = {no: ln.amount_stated or 0.0 for no, ln in lines.items()}
     total_amount = sum(amounts.values())
-    checked = sum(amounts[p.line_no] for p in plans if p.verifiable != "no")
+    # what was actually compared with a measurement, not what could have been
+    checked = sum(amounts[c.line_no] for c in comparisons if c.measured_qty is not None)
     share = checked / total_amount if total_amount else 0.0
     over_total = sum(c.overbilling_min or 0.0 for c in comparisons)
 
