@@ -2,7 +2,7 @@
 
 Photo-based measurement of tiled surfaces, compared with a contractor's work statement. Results must show uncertainty, exclusions, and questions for human review before payment.
 
-The local frontend is implemented in `app/frontend/`: an inspection workspace with illustrative measurements, visual evidence, statement review, local uploads, notes, and printable reports. The measurement backend and model integrations are not connected yet. Example quantities and overlays are clearly labeled synthetic fixtures.
+The local frontend is implemented in `app/frontend/`: an inspection workspace with illustrative measurements, visual evidence, statement review, local uploads, notes, and printable reports. It is not connected to a measurement backend; its example quantities and overlays are labeled synthetic fixtures. A separate [SAM photo benchmark](validation/README.md) makes real model requests and evaluates detection candidates. It does not implement room-area measurement or establish physical accuracy.
 
 ## Run the frontend
 
@@ -40,7 +40,7 @@ The optional application dependencies are reserved for teammate A:
 UV_CACHE_DIR="$PWD/.cache/uv" uv sync --locked --group app
 ```
 
-An empty local `.env` is prepared with owner-only permissions. If creating a new checkout, copy `.env.example` to `.env` and run `chmod 600 .env`. Fill the credentials locally; do not paste keys into chat or commit them. Endpoint and model fields are populated only when verified in the access guide. No service currently loads this configuration; client implementation follows the agreed development window.
+For a new checkout, copy `.env.example` to `.env` and run `chmod 600 .env`. Fill the credentials locally; do not paste keys into chat or commit them. The standalone validation client loads this server-side configuration. Model requests upload selected photos and use API credits; completed identical requests can reuse the local cache. The frontend remains in example mode.
 
 ## Folder layout
 
@@ -52,7 +52,7 @@ An empty local `.env` is prepared with owner-only permissions. If creating a new
 | `agent/` | Statement parsing, planning, comparison, protocol |
 | `app/frontend/` | Working React/Vite inspection frontend; local example mode |
 | `app/` | Future FastAPI service and integration |
-| `tests/` | Measurement and integration checks, to be implemented |
+| `tests/` | Offline benchmark, crop geometry, deduplication, and analysis checks |
 | `data/samples/` | Consented, anonymized public fixtures only |
 | `data/private/` | Private room photos and field records; ignored |
 | `data/cache/` | Private model responses and derived cache; ignored |
@@ -63,8 +63,8 @@ Private photos, consent records, and room notes stay in `data/private/`. Publish
 
 ## Readiness
 
-- Preparation checks passed: locked offline dependency sync, Python 3.12 imports for all core/application libraries, valid TOML, empty credential fields, owner-only `.env` permissions, and Git exclusions for secrets/private data. Frontend build and browser checks are documented in its README.
-- Credentials are intentionally blank; this session makes no paid model calls.
+- Preparation checks cover locked offline dependency sync, Python 3.12 imports, valid TOML, and Git exclusions for secrets/private data. Frontend build and browser checks are documented in its README.
+- The standalone SAM benchmark has been exercised on the collected photos. Detection candidates require individual review; reference photos without physical measurements cannot validate area accuracy. Credentials stay in the ignored local `.env`.
 - Meta API reference material is available in `.claude/skills/meta-model-api/SKILL.md`. Model access setup and unresolved details are recorded in `docs/MODEL_ACCESS.md`.
 - The repository remote is `https://github.com/Atilla888/ActCheck.git`. Frontend development runs locally; no hosted deployment has been created.
 - The acceptance gates remain: at least 16 of 20 walls with at least 30 reliable masks on October 27; at most 3% error on three rooms on October 29. Confirm whether to check each room separately during schema review.
