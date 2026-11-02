@@ -3,7 +3,7 @@ over_billed when the bill exceeds the upper end of the measured interval, hidden
 
 from schemas.act import ActLine, VerificationPlan
 from schemas.compare import LineComparison
-from schemas.measure import RoomMeasurement
+from schemas.measure import ObjectCount, RoomMeasurement
 
 K_SIGMA = 2.0
 
@@ -66,4 +66,32 @@ def compare_tile_line(
         overbilling_min=round(overbilling, 0) if overbilling is not None else None,
         evidence=evidence,
         note=", ".join(room.unverified_walls) if room.unverified_walls else "",
+    )
+
+
+def compare_count_line(
+    line: ActLine, plan: VerificationPlan, counts: list[ObjectCount]
+) -> LineComparison:
+    """Items counted on the photos. Photos may miss a wall, so a shortfall is a question for the
+    contractor (incomplete), never over_billed."""
+    counted = sum(c.count for c in counts)
+    if line.quantity is None or not counts:
+        verdict = "incomplete"
+    elif line.quantity <= counted:
+        verdict = "consistent"
+    else:
+        verdict = "incomplete"
+    return LineComparison(
+        line_no=line.line_no,
+        description_raw=line.description_raw,
+        unit=line.unit_raw,
+        billed_qty=line.quantity,
+        measured_qty=float(counted) if counts else None,
+        measured_low=None,
+        measured_high=None,
+        verdict=verdict,
+        evidence=[c.overlay_png for c in counts],
+        note=f"{plan.count_concept}: {counted} on {len(counts)} photo(s)"
+        if counts
+        else "No photos",
     )
