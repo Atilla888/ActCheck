@@ -23,7 +23,10 @@ START_RADIUS = 1.6  # lattice cells (Chebyshev), i.e. the eight neighbours of th
 GROWTH = 1.5
 THRESHOLDS = (0.2, 0.12, 0.12)  # lattice cells: growth/first refinement, then final
 SHAPE_RANGE = (0.6, 1.3)  # rectified tile extent relative to the nominal tile, per axis
-CLUSTER_GAP = 2  # lattice cells; isolated tiles further away than one missing tile are dropped
+EXTENT_TOLERANCE = 0.08  # relative to the median matched tile; cut tiles fall outside
+CLUSTER_GAP = 2  # lattice cells linked through at most one missing tile form a group
+MIN_CLUSTER = 4  # smaller groups are chance matches from another plane
+CLUSTER_SHARE = 0.1  # of the largest group
 
 
 @dataclass
@@ -321,8 +324,13 @@ def _refine(H, centers, corners, inliers, threshold, expected):
     lattice = _apply(H, centers)
     keep, i, j, targets, offsets = _assign(lattice)
     good = np.linalg.norm(lattice[keep] - targets, axis=1) <= threshold
-    good &= np.array([_tile_shaped(H, corners[k], expected) for k in keep], bool)
-    good[good] = _largest_cluster(i[good], j[good])
+    spans = np.array([np.ptp(_apply(H, corners[k]), axis=0) for k in keep]) / expected
+    good &= np.all((spans >= SHAPE_RANGE[0]) & (spans <= SHAPE_RANGE[1]), axis=1)
+    if good.sum() >= MIN_TILES:
+        # Cut tiles at wall edges are smaller along one axis than the typical full tile.
+        typical = np.median(spans[good], axis=0)
+        good &= np.all(np.abs(spans / typical - 1) <= EXTENT_TOLERANCE, axis=1)
+    good[good] = _clusters(i[good], j[good])
     if good.sum() < MIN_TILES:
         return None
     keep, i, j, targets = keep[good], i[good], j[good], targets[good]
@@ -332,10 +340,14 @@ def _refine(H, centers, corners, inliers, threshold, expected):
     return refined, keep, i, j, targets, offsets
 
 
-def _largest_cluster(i, j, gap=CLUSTER_GAP):
-    """Mask of the largest group of lattice cells linked through at most gap-1 missing tiles."""
+def _clusters(i, j, gap=CLUSTER_GAP):
+    """Mask of lattice cells in substantial groups (linked through at most gap-1 missing tiles).
+
+    A door can split one wall into several large groups; a foreign tile that matched by chance
+    forms a tiny one.
+    """
     cells = {(a, b): k for k, (a, b) in enumerate(zip(i.tolist(), j.tolist(), strict=True))}
-    seen, best = set(), []
+    seen, groups = set(), []
     for start in cells:
         if start in seen:
             continue
@@ -350,16 +362,13 @@ def _largest_cluster(i, j, gap=CLUSTER_GAP):
                     if neighbour in cells and neighbour not in seen:
                         seen.add(neighbour)
                         stack.append(neighbour)
-        if len(group) > len(best):
-            best = group
+        groups.append(group)
+    largest = max((len(group) for group in groups), default=0)
     mask = np.zeros(len(i), bool)
-    mask[best] = True
+    for group in groups:
+        if len(group) >= max(MIN_CLUSTER, CLUSTER_SHARE * largest):
+            mask[group] = True
     return mask
-
-
-def _tile_shaped(H, corners, expected):
-    span = np.ptp(_apply(H, corners), axis=0) / np.asarray(expected)
-    return bool(np.all((span >= SHAPE_RANGE[0]) & (span <= SHAPE_RANGE[1])))
 
 
 def _unshear(H, corners):

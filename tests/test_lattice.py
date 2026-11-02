@@ -50,9 +50,7 @@ def test_oblique_running_bond():
 def test_dropout_merges_false_positives():
     wall = SyntheticWall(tile_w_mm=150, tile_h_mm=150, yaw_deg=-20, seed=5)
     render = render_wall(wall)
-    detections = fake_detections(
-        render, seed=5, dropout=0.3, merge_rate=0.08, false_positives=15
-    )
+    detections = fake_detections(render, seed=5, dropout=0.3, merge_rate=0.08, false_positives=15)
     fit = fit_lattice(detections, spec(wall))
     assert fit is not None
     assert abs(wall_area_error(render, fit)) <= 0.007
@@ -78,9 +76,7 @@ def test_corner_picks_one_plane():
     )
     detections = [{**d, "id": "left:" + d["id"]} for d in fake_detections(left, seed=7)]
     for d in fake_detections(right, seed=8):
-        shifted = [
-            {**c, "points": [[x + 800, y] for x, y in c["points"]]} for c in d["contours"]
-        ]
+        shifted = [{**c, "points": [[x + 800, y] for x, y in c["points"]]} for c in d["contours"]]
         box = [d["box"][0] + 800, d["box"][1], d["box"][2] + 800, d["box"][3]]
         detections.append({**d, "id": "right:" + d["id"], "contours": shifted, "box": box})
     fit = fit_lattice(detections, TileSpec(width_mm=100, height_mm=100, source="box_label"))
@@ -111,3 +107,13 @@ def test_merged_masks_are_counted_not_used():
     assert merged >= 1
     areas = np.array([q.area_px for q in quads])
     assert areas.max() < 1.7 * np.median(areas)
+
+
+def test_cut_edge_tiles_are_not_lattice_cells():
+    wall = SyntheticWall(tile_w_mm=200, tile_h_mm=200, seed=11)
+    detections = fake_detections(render_wall(wall), seed=11)
+    truth = {d["id"]: d["truth"] for d in detections}
+    fit = fit_lattice(detections, spec(wall))
+    columns = {truth[t.det_id]["i"] for t in fit.tiles}
+    rows = {truth[t.det_id]["j"] for t in fit.tiles}
+    assert max(columns) == 10 and max(rows) == 9  # column 11 is 176 mm wide, row 10 is 78 mm
