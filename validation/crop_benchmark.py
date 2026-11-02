@@ -129,7 +129,7 @@ async def main():
     settings = Settings()
     if settings.meta_api_base_url.rstrip("/") != "https://api.meta.ai/v1":
         raise SystemExit("Unexpected API host; credential not sent")
-    if not settings.meta_api_key.get_secret_value():
+    if settings.meta_api_key is None or not settings.meta_api_key.get_secret_value():
         raise SystemExit("META_API_KEY is empty")
     config = experiment_config(settings, args.max_side)
     config_fingerprint = digest(json.dumps(config, sort_keys=True).encode())

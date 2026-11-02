@@ -2,12 +2,8 @@
 
 import argparse
 import asyncio
-import base64
 import csv
-import hashlib
-import io
 import json
-import time
 from pathlib import Path
 
 import cv2
@@ -15,23 +11,12 @@ import meta_sam_parser as msp
 import numpy as np
 from openai import APIStatusError, AsyncOpenAI
 from PIL import Image, ImageDraw, ImageOps
-from pydantic import SecretStr
-from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from measure import sam_client
+from measure.sam_client import CACHE, Settings, crops_for, digest, input_image
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "outputs/tile_benchmark"
-CACHE = ROOT / "data/cache/sam_benchmark"
-
-
-class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=ROOT / ".env", extra="ignore")
-    meta_api_key: SecretStr
-    meta_api_base_url: str = "https://api.meta.ai/v1"
-    meta_sam_model: str = "sam-3.1"
-
-
-def digest(data):
-    return hashlib.sha256(data).hexdigest()
 
 
 def audit(folder):
@@ -57,86 +42,8 @@ def audit(folder):
     return rows
 
 
-def input_image(path, crop=None, max_side=0):
-    with Image.open(path) as original:
-        image = ImageOps.exif_transpose(original).convert("RGB")
-        if crop:
-            image = image.crop(crop)
-        if max_side:
-            image.thumbnail((max_side, max_side))
-        if (
-            not max_side
-            and crop is None
-            and original.getexif().get(274, 1) == 1
-            and original.format == "JPEG"
-        ):
-            data = path.read_bytes()
-        else:
-            buffer = io.BytesIO()
-            image.save(buffer, format="JPEG", quality=95)
-            data = buffer.getvalue()
-    return image, data
-
-
 async def infer(client, settings, data, prompt):
-    spec = {
-        "image_sha256": digest(data),
-        "model": settings.meta_sam_model,
-        "base_url": settings.meta_api_base_url,
-        "prompt": prompt,
-        "metadata": {"include_confidence": "true", "mask_encoding": "lossless"},
-    }
-    key = digest(json.dumps(spec, sort_keys=True).encode())
-    cache = CACHE / f"{key}.json"
-    if cache.exists():
-        saved = json.loads(cache.read_text())
-        if saved.get("spec") != spec:
-            raise ValueError("Cached request spec mismatch")
-        cached = True
-    else:
-        start = time.monotonic()
-        stream = await client.responses.create(
-            model=settings.meta_sam_model,
-            stream=True,
-            metadata=spec["metadata"],
-            input=[
-                {
-                    "type": "message",
-                    "role": "user",
-                    "content": [
-                        {"type": "input_text", "text": prompt},
-                        {
-                            "type": "input_image",
-                            "image_url": "data:image/jpeg;base64,"
-                            + base64.b64encode(data).decode(),
-                        },
-                    ],
-                }
-            ],
-        )
-        events = []
-        try:
-            async for event in stream:
-                events.append(event.model_dump())
-        finally:
-            await stream.close()
-        if not any(e["type"] == "response.completed" for e in events):
-            raise RuntimeError("Stream did not complete; response not cached")
-        saved = {"spec": spec, "seconds": time.monotonic() - start, "events": events}
-        CACHE.mkdir(parents=True, exist_ok=True)
-        temp = cache.with_suffix(".tmp")
-        temp.write_text(json.dumps(saved))
-        temp.replace(cache)
-        cached = False
-
-    async def replay():
-        for event in saved["events"]:
-            yield event
-
-    parsed = await msp.parse_responses_stream(
-        replay(), msp.image_segmentation_format()
-    ).final_result()
-    return parsed, saved["seconds"], cached, key
+    return await sam_client.infer(client, settings, data, prompt, cache_dir=CACHE)
 
 
 def summarize(parsed, image, output):
@@ -193,18 +100,6 @@ def summarize(parsed, image, output):
     return records
 
 
-def crops_for(size):
-    width, height = size
-    for y in range(3):
-        for x in range(3):
-            yield (
-                max(0, int((x / 3 - 0.04) * width)),
-                max(0, int((y / 3 - 0.04) * height)),
-                min(width, int(((x + 1) / 3 + 0.04) * width)),
-                min(height, int(((y + 1) / 3 + 0.04) * height)),
-            )
-
-
 async def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--folder", type=Path, default=ROOT / "bathroom_tiles_20")
@@ -228,7 +123,7 @@ async def main():
     settings = Settings()
     if settings.meta_api_base_url.rstrip("/") != "https://api.meta.ai/v1":
         raise SystemExit("Unexpected API host; refusing to send credential")
-    if not settings.meta_api_key.get_secret_value():
+    if settings.meta_api_key is None or not settings.meta_api_key.get_secret_value():
         raise SystemExit("META_API_KEY is empty")
     results_path = OUT / "runs.json"
     results = json.loads(results_path.read_text()) if results_path.exists() else []
