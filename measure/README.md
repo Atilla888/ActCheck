@@ -9,9 +9,9 @@ from measure import measure_wall, measure_room, count_objects
 from schemas.measure import TileSpec
 
 tile = TileSpec(width_mm=300, height_mm=600, grout_mm=2, source="box_label")
-wall = measure_wall("wall2.jpg", tile, "wall_2")            # never raises on a bad photo
+wall = measure_wall("wall2.jpg", tile, "wall_2")  # never raises on a bad photo
 room = measure_room([("wall_1", "w1.jpg"), ("wall_2", "w2.jpg")], tile)
-sockets = count_objects("wall2.jpg", "socket")              # one SAM concept, full frame
+sockets = count_objects("wall2.jpg", "socket")  # one SAM concept, full frame
 ```
 
 `exclude_concepts` defaults to `door, mirror, window, bathtub`; pass more (`toilet`, `sink`,
