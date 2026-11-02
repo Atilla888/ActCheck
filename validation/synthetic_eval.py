@@ -185,7 +185,7 @@ def _write(rows, mode, out_dir):
         writer = csv.DictWriter(handle, fieldnames=list(rows[0]))
         writer.writeheader()
         writer.writerows(rows)
-    keys = ("id", "kind", "truth_m2", "measured_m2", "sigma_m2", "hidden_m2")
+    keys = ("id", "kind", "status", "truth_m2", "measured_m2", "sigma_m2", "hidden_m2")
     (out_dir / f"roc_input_{mode}.json").write_text(
         json.dumps([{k: r[k] for k in keys} for r in rows], indent=2)
     )

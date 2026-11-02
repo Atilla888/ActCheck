@@ -172,8 +172,23 @@ def test_grid_aligned_tiles_count_without_a_connecting_chain():
                                                 and d["truth"]["j"] == 0)]  # fmt: skip
     concepts = {"door": [fake_concept(render.door_polygon, "door", size)]}
     _, area = run(wall, detections=detections, concepts=concepts)
-    above_door = 3 * 0.6 * 0.302  # three missed tiles, only ~3 % of the wall
-    expected = render.visible_tiled_area_m2 - above_door
-    assert area.tiled_area_m2 == pytest.approx(expected, rel=0.03)
-    # The missed corner lies inside the counted outline: it becomes an allowance, not silence.
-    assert area.undetected_m2 > 0.05 * area.tiled_area_m2  # enough for status "partial"
+    above_door = 3 * 0.6 * 0.302  # three missed tiles, ~14 % of the visible wall
+    visible = render.visible_tiled_area_m2
+    assert 0.97 * (visible - above_door) <= area.tiled_area_m2 <= 1.03 * visible
+    # Never confidently wrong: within 2 sigma (inferred tiles widen sigma) or flagged partial.
+    sigma = math.hypot(area.sigma_random_m2, area.sigma_system_m2)
+    honest = abs(area.tiled_area_m2 - visible) <= 2 * sigma
+    assert honest or area.undetected_m2 > 0.05 * area.tiled_area_m2
+
+
+def test_missed_edge_tiles_follow_neighbouring_rows():
+    wall = SyntheticWall(tile_w_mm=300, tile_h_mm=150, bond="running", yaw_deg=20, seed=33)
+    render = render_wall(wall)
+    detections = fake_detections(render, seed=33)
+    last_i = max(d["truth"]["i"] for d in detections if d["truth"])
+    corners = {(0, 0), (1, 0), (last_i, 0), (0, 5), (last_i, 9)}  # corner and edge tiles missed
+    detections = [
+        d for d in detections if not d["truth"] or (d["truth"]["i"], d["truth"]["j"]) not in corners
+    ]
+    _, area = run(wall, detections=detections)
+    assert area.tiled_area_m2 == pytest.approx(render.visible_tiled_area_m2, rel=0.015)

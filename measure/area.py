@@ -29,6 +29,7 @@ MAX_ACCEPTED_CELLS = 4  # larger rectified masks are walls, mirrors or merged bl
 RECTANGULARITY_MIN = 0.75
 ANGLE_TOLERANCE_DEG = 10
 GAP_CELLS = 1.6  # missed tiles bridged along rows and columns; doors are wider
+EXTEND_CELLS = 2  # at most this many missed edge tiles are inferred per row or column end
 
 
 def tile_tolerance_mm(source):
@@ -68,6 +69,10 @@ def measure_area(fit, detections, image_size, tile, concepts=None, *, seed=0):
     for tile_ in fit.tiles:
         (blocked_ids if plane.blocked_at(fit, tile_, blocked) else kept).append(tile_)
     cells = plane.cells(fit, kept)
+    # Quantisation of whole cells is corrected analytically before exclusions clip them
+    # (a tile cut around a door corner is an L, not a full cell).
+    correction = len(kept) * cell_area - cells.sum() * plane.res**2
+    cells &= ~blocked
     accepted, partial_ids = _accept(fit, detections, labels, cells, plane, blocked, erosion)
     grow = max(0, int(round((erosion + tile.grout_mm / 2) / plane.res)))
     if grow:
@@ -87,16 +92,20 @@ def measure_area(fit, detections, image_size, tile, concepts=None, *, seed=0):
         else:
             undetected[hole] |= part
     region |= completed
+    extended = _extend_to_neighbours(region, plane.frame & ~blocked & ~undetected, fit, plane)
+    region |= extended
     undetected |= _hull_gaps(region, blocked | undetected, plane, cell_area)
     completed_cells = int(round(completed.sum() * plane.res**2 / cell_area))
-    completed |= bridged
+    completed |= bridged | extended
     full = len(kept)
-    area_mm2 = region.sum() * plane.res**2 + (full * cell_area - cells.sum() * plane.res**2)
+    area_mm2 = region.sum() * plane.res**2 + correction
     excluded, excluded_px, undetected_m2 = _exclusions(region, undetected, masks, plane)
     border = region & ~cv2.erode(region.astype(np.uint8), np.ones((3, 3), np.uint8)).astype(bool)
     inner = cv2.erode(plane.frame.astype(np.uint8), np.ones((5, 5), np.uint8)).astype(bool)
     border_fraction = float((border & ~inner).sum() / max(1, border.sum()))
     sigma_random = _sigma_random(fit, region & ~cells, region, erosion, plane, seed)
+    # Extended row ends are inferred, not seen: half their area is one sigma.
+    sigma_random = math.hypot(sigma_random, 0.5 * extended.sum() * plane.res**2)
     delta = math.hypot(tile_tolerance_mm(tile.source), GROUT_TOLERANCE_MM)
     area_m2 = area_mm2 / 1e6
     return AreaResult(
@@ -297,6 +306,60 @@ def _on_joint_lines(fit, box, part, plane, erosion):
     left = (x0 - erosion + cw / 2 - offset) / px
     right = (x1 + erosion - cw / 2 - offset) / px
     return min(abs(left - round(left)), abs(right - round(right))) * px <= tolerance
+
+
+def _extend_to_neighbours(region, allowed, fit, plane):
+    """Extend tile rows and columns cut short by missed edge tiles to their neighbours' extent.
+
+    Tiled walls are rectangular apart from openings: a row ending one tile before both its
+    neighbours most likely lost an edge tile. At most EXTEND_CELLS tiles are added per end,
+    never into exclusions or outside the photo.
+    """
+    added = np.zeros_like(region)
+    for axis in (0, 1):  # 0: rows along plane x (bands in y); 1: columns (bands in x)
+        pitch = fit.pitch[1 - axis]
+        across = fit.pitch[axis]
+        limit = int(round(EXTEND_CELLS * across / plane.res))
+        origin = plane.lo[1 - axis]
+        length = region.shape[axis]
+        first = math.floor((origin + pitch / 2) / pitch) - 1
+        last = math.ceil((origin + length * plane.res + pitch / 2) / pitch) + 1
+        bands, extents = [], []
+        for k in range(first, last + 1):
+            r0 = max(0, round((k * pitch - pitch / 2 - origin) / plane.res))
+            r1 = min(length, round((k * pitch + pitch / 2 - origin) / plane.res))
+            if r1 <= r0:
+                continue
+            slab = region[r0:r1] if axis == 0 else region[:, r0:r1].T
+            covered = np.flatnonzero(slab.mean(axis=0) >= 0.3)
+            bands.append((r0, r1))
+            extents.append((covered[0], covered[-1]) if len(covered) else None)
+        for index, ((r0, r1), own) in enumerate(zip(bands, extents, strict=True)):
+            window = extents[max(0, index - 2) : index] + extents[index + 1 : index + 3]
+            neighbours = [e for e in window if e is not None]
+            if own is None or len(neighbours) < 2:
+                continue
+            # The median of up to four neighbours: one stray mask cannot drag a row outward.
+            low = max(int(np.median([e[0] for e in neighbours])), own[0] - limit)
+            high = min(int(np.median([e[1] for e in neighbours])), own[1] + limit)
+            if own[1] - own[0] < 0.5 * max(e[1] - e[0] for e in neighbours):
+                continue
+            # Only the part of the band that already holds tiles: bands straddling the wall's
+            # edge must not paint beyond it.
+            if axis == 0:
+                inside = region[r0:r1].any(axis=1)[:, None]
+            else:
+                inside = region[:, r0:r1].any(axis=0)[None, :]
+            for a, b in ((low, own[0]), (own[1] + 1, high + 1)):
+                if b <= a:
+                    continue
+                if axis == 0:
+                    fill = allowed[r0:r1, a:b] & ~region[r0:r1, a:b] & inside
+                    added[r0:r1, a:b] |= fill
+                else:
+                    fill = allowed[a:b, r0:r1] & ~region[a:b, r0:r1] & inside
+                    added[a:b, r0:r1] |= fill
+    return added
 
 
 def _hull_gaps(region, explained, plane, cell_area):

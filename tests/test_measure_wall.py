@@ -137,9 +137,8 @@ def test_room_aggregation(tmp_path):
         + (w2.sigma_system_m2)
     )
     assert room.sigma_total_m2 == pytest.approx(sigma, abs=2e-3)
-    assert room.hidden_area_m2 == pytest.approx(
-        sum(r.area_m2 for r in w1.excluded if r.reason == "not_visible"), abs=2e-3
-    )
+    hidden = [r.area_m2 for w in (w1, w2) for r in w.excluded if r.reason == "not_visible"]
+    assert room.hidden_area_m2 == pytest.approx(sum(hidden), abs=2e-3)
 
 
 def test_deterministic(tmp_path):
