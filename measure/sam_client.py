@@ -15,6 +15,7 @@ import json
 import os
 import time
 from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures.process import BrokenProcessPool
 from dataclasses import dataclass, field
 from multiprocessing import get_context
 from pathlib import Path
@@ -179,13 +180,15 @@ async def infer(client, settings, data, prompt, *, cache_dir=CACHE):
     return await parse_saved(saved), saved["seconds"], cached, key
 
 
-def segment(image, concepts=(), *, crops=True, client=None, settings=None, cache_dir=CACHE):
+def segment(
+    image, concepts=(), *, tiles=True, crops=True, client=None, settings=None, cache_dir=CACHE
+):
     """Tile masks (merged, source pixels) plus one full-frame detection list per concept."""
     started = time.monotonic()
     settings = settings or Settings()
     cache_dir = Path(cache_dir)
-    jobs = [("full", None, TILE_PROMPT)]
-    if crops:
+    jobs = [("full", None, TILE_PROMPT)] if tiles else []
+    if tiles and crops:
         jobs += [(f"crop{i:02d}", box, TILE_PROMPT) for i, box in enumerate(crops_for(image.size))]
     jobs += [(f"concept:{concept}", None, concept) for concept in concepts]
     prepared = []
@@ -210,13 +213,7 @@ def segment(image, concepts=(), *, crops=True, client=None, settings=None, cache
         asyncio.run(_fetch_missing(missing, client, settings, cache_dir))
     pending = [job for job in prepared if not job["converted"].exists()]
     args = [(j["response"], j["box"], j["size"], image.size, j["run_id"]) for j in pending]
-    if len(args) > 1:
-        workers = min(len(args), os.cpu_count() or 1)
-        with ProcessPoolExecutor(workers, mp_context=get_context("spawn")) as pool:
-            outputs = list(pool.map(_convert_response, args))
-    else:
-        outputs = [_convert_response(arg) for arg in args]
-    for job, detections in zip(pending, outputs, strict=True):
+    for job, detections in zip(pending, _convert_all(args), strict=True):
         _write_json(job["converted"], detections)
     tiles, found = [], {concept: [] for concept in concepts}
     for job in prepared:
@@ -241,6 +238,23 @@ def segment(image, concepts=(), *, crops=True, client=None, settings=None, cache
 def _converted_key(response_key, box, size, source_size, run_id):
     identity = [response_key, list(box), list(size), list(source_size), run_id, CONVERT_VERSION]
     return digest(json.dumps(identity).encode())
+
+
+def _convert_all(args):
+    """Convert responses in worker processes, or here when workers are unavailable.
+
+    Workers use the spawn start method, which re-imports the caller's __main__; a script that
+    calls segment() without an `if __name__ == "__main__":` guard breaks the pool, and the
+    conversion then runs in this process, only slower. ACTCHECK_SAM_WORKERS=1 never spawns.
+    """
+    workers = min(len(args), int(os.environ.get("ACTCHECK_SAM_WORKERS", os.cpu_count() or 1)))
+    if workers > 1:
+        try:
+            with ProcessPoolExecutor(workers, mp_context=get_context("spawn")) as pool:
+                return list(pool.map(_convert_response, args))
+        except (BrokenProcessPool, RuntimeError, OSError):
+            pass
+    return [_convert_response(arg) for arg in args]
 
 
 def _convert_response(args):

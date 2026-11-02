@@ -64,3 +64,35 @@ def test_second_segment_reuses_converted_masks():
     second = sam.segment(image, settings=keyless_settings())
     assert time.monotonic() - started < 5
     assert second.tiles == first.tiles
+
+
+def test_conversion_falls_back_when_process_pool_fails(monkeypatch):
+    class BrokenPool:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def map(self, *args):
+            from concurrent.futures.process import BrokenProcessPool
+
+            raise BrokenProcessPool("unguarded __main__")
+
+    monkeypatch.setattr(sam, "ProcessPoolExecutor", BrokenPool)
+    converted = sam._convert_all([("missing-response", (0, 0, 1, 1), (1, 1), (1, 1), "r")] * 0)
+    assert converted == []
+    calls = []
+    monkeypatch.setattr(sam, "_convert_response", lambda args: calls.append(args) or [])
+    assert sam._convert_all([("a",), ("b",)]) == [[], []]
+    assert calls == [("a",), ("b",)]
+
+
+def test_single_worker_setting_converts_inline(monkeypatch):
+    monkeypatch.setenv("ACTCHECK_SAM_WORKERS", "1")
+    monkeypatch.setattr(sam, "ProcessPoolExecutor", None)  # would fail if used
+    monkeypatch.setattr(sam, "_convert_response", lambda args: [args])
+    assert sam._convert_all([("a",), ("b",)]) == [[("a",)], [("b",)]]

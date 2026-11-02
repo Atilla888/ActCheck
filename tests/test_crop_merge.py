@@ -82,9 +82,7 @@ def test_outside_input_pixels_are_clipped_before_mapping(monkeypatch):
 def test_near_seam_mask_is_not_mistaken_for_complete_tile(monkeypatch, gap):
     # Observed SAM masks stopped 3–5 input pixels before an internal bottom seam.
     r = record(monkeypatch, np.ones((100, 70), np.uint8), (200, 1080 - gap, 270, 1180 - gap))
-    d = cm.convert_record(
-        r, (1600, 1180), (2887, 901, 4608, 2170), (4608, 3072), "crop"
-    )
+    d = cm.convert_record(r, (1600, 1180), (2887, 901, 4608, 2170), (4608, 3072), "crop")
     assert d["crop_boundary"] and d["edge_truncated"]
     assert not d["image_boundary"]
 

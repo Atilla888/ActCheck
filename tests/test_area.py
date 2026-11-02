@@ -2,6 +2,8 @@
 
 import math
 
+import cv2
+import numpy as np
 import pytest
 
 from measure.area import GROUT_TOLERANCE_MM, measure_area, tile_tolerance_mm
@@ -120,3 +122,24 @@ def test_strip_beside_door_and_row_gaps_are_counted():
     }
     _, area = run(wall, concepts=concepts, dropout=0.1)
     assert area.tiled_area_m2 == pytest.approx(render.visible_tiled_area_m2, rel=0.03)
+
+
+def test_floor_masks_block_acceptance():
+    wall = SyntheticWall(tile_w_mm=150, tile_h_mm=150, fill=0.6, seed=18)
+    render = render_wall(wall)
+    size = (render.image.shape[1], render.image.shape[0])
+    detections = fake_detections(render, seed=18)
+    # Floor tiles continue below the wall; in the image they look like more aligned tiles.
+    h = wall.wall_h_mm
+    floor = []
+    for k, x in enumerate(range(0, 2400, 152)):
+        for row, y in enumerate((h + 2, h + 154)):
+            rect = np.array([[x, y], [x + 150, y], [x + 150, y + 150], [x, y + 150]], float)
+            polygon = cv2.perspectiveTransform(rect[None], render.plane_to_image)[0]
+            floor.append({**fake_concept(polygon, "tile", size), "id": f"floor:{k}:{row}"})
+    band = np.array([[0, h], [2400, h], [2400, h + 400], [0, h + 400]], float)
+    floor_mask = cv2.perspectiveTransform(band[None], render.plane_to_image)[0]
+    concepts = {"floor": [fake_concept(floor_mask, "floor", size)]}
+    _, area = run(wall, detections=detections + floor, concepts=concepts)
+    assert area.tiled_area_m2 == pytest.approx(render.tiled_area_m2, rel=0.01)
+    assert all(region.label != "floor" for region in area.excluded)

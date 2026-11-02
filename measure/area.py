@@ -16,6 +16,7 @@ from scipy import ndimage
 from schemas.measure import ExcludedRegion
 
 OPENING_CONCEPTS = {"door", "window"}
+BLOCKING_ONLY = {"floor"}  # stops acceptance but is not an exclusion of the wall
 GROUT_TOLERANCE_MM = 1.0
 TILE_TOLERANCE_MM = {"box_label": 0.5, "tape": 1.0, "act": 1.5, "user": 1.5}
 MAX_COMPLETED_CELLS = 4
@@ -49,6 +50,7 @@ class AreaResult:
     region_px: list[np.ndarray] = field(default_factory=list)  # outlines, source image px
     completed_px: list[np.ndarray] = field(default_factory=list)
     partial_ids: list[str] = field(default_factory=list)
+    blocked_ids: list[str] = field(default_factory=list)  # lattice tiles inside floor/door/...
 
 
 def measure_area(fit, detections, image_size, tile, concepts=None, *, seed=0):
@@ -56,25 +58,30 @@ def measure_area(fit, detections, image_size, tile, concepts=None, *, seed=0):
     px, py = fit.pitch
     cell_area = px * py
     plane = _Plane(fit, image_size, concepts)
-    cells = plane.cells(fit)
     labels = plane.labels([d["contours"] for d in detections])
     erosion = _erosion_mm(fit, detections, labels, plane)
-    accepted, partial_ids = _accept(fit, detections, labels, cells, plane)
+    masks = {c: plane.mask(found) & plane.frame for c, found in concepts.items() if found}
+    blocked = np.zeros(plane.shape, bool)
+    for mask in masks.values():
+        blocked |= mask
+    kept, blocked_ids = [], []
+    for tile_ in fit.tiles:
+        (blocked_ids if plane.blocked_at(fit, tile_, blocked) else kept).append(tile_)
+    cells = plane.cells(fit, kept)
+    accepted, partial_ids = _accept(fit, detections, labels, cells, plane, blocked)
     grow = max(0, int(round((erosion + tile.grout_mm / 2) / plane.res)))
     if grow:
         accepted = cv2.dilate(accepted.astype(np.uint8), np.ones((2 * grow + 1,) * 2, np.uint8))
     region = (cells | accepted.astype(bool)) & plane.frame
-    openings = np.zeros_like(region)
-    for concept in OPENING_CONCEPTS & set(concepts):
-        if concepts[concept]:
-            openings |= plane.mask(concepts[concept])
-    bridged = _close_gaps(region, fit, plane) & plane.frame & ~openings & ~region
+    bridged = _close_gaps(region, fit, plane) & plane.frame & ~blocked & ~region
     region |= bridged
     filled = ndimage.binary_fill_holes(region)
     holes, count = ndimage.label(filled & ~region)
     completed, undetected = np.zeros_like(region), np.zeros_like(region)
     for index, hole in enumerate(ndimage.find_objects(holes), 1):
         part = holes[hole] == index
+        if (part & blocked[hole]).sum() > 0.5 * part.sum():
+            continue  # a mirror or window inside the tiling: reported as an exclusion
         if part.sum() * plane.res**2 <= MAX_COMPLETED_CELLS * cell_area * 1.05:
             completed[hole] |= part
         else:
@@ -82,9 +89,9 @@ def measure_area(fit, detections, image_size, tile, concepts=None, *, seed=0):
     region |= completed
     completed_cells = int(round(completed.sum() * plane.res**2 / cell_area))
     completed |= bridged
-    full = len(fit.tiles)
+    full = len(kept)
     area_mm2 = region.sum() * plane.res**2 + (full * cell_area - cells.sum() * plane.res**2)
-    excluded, excluded_px, undetected_m2 = _exclusions(region, undetected, concepts, plane)
+    excluded, excluded_px, undetected_m2 = _exclusions(region, undetected, masks, plane)
     border = region & ~cv2.erode(region.astype(np.uint8), np.ones((3, 3), np.uint8)).astype(bool)
     inner = cv2.erode(plane.frame.astype(np.uint8), np.ones((5, 5), np.uint8)).astype(bool)
     border_fraction = float((border & ~inner).sum() / max(1, border.sum()))
@@ -105,6 +112,7 @@ def measure_area(fit, detections, image_size, tile, concepts=None, *, seed=0):
         region_px=plane.outlines(region),
         completed_px=plane.outlines(completed),
         partial_ids=partial_ids,
+        blocked_ids=[t.det_id for t in blocked_ids],
     )
 
 
@@ -146,9 +154,17 @@ class _Plane:
             image, self.M, (self.shape[1], self.shape[0]), flags=cv2.INTER_NEAREST, borderValue=0
         )
 
-    def cells(self, fit):
+    def blocked_at(self, fit, tile, blocked):
+        """True when the tile's cell centre lies in a floor, door, mirror or similar mask."""
+        x0, y0, x1, y1 = fit.cell_rect(tile.i, tile.j)
+        col = int(round(((x0 + x1) / 2 - self.lo[0]) / self.res))
+        row = int(round(((y0 + y1) / 2 - self.lo[1]) / self.res))
+        inside = 0 <= row < self.shape[0] and 0 <= col < self.shape[1]
+        return bool(inside and blocked[row, col])
+
+    def cells(self, fit, tiles):
         mask = np.zeros(self.shape, bool)
-        for tile in fit.tiles:
+        for tile in tiles:
             x0, y0, x1, y1 = fit.cell_rect(tile.i, tile.j)
             c0, c1 = (round((x - self.lo[0]) / self.res) for x in (x0, x1))
             r0, r1 = (round((y - self.lo[1]) / self.res) for y in (y0, y1))
@@ -207,7 +223,7 @@ def _erosion_mm(fit, detections, labels, plane):
     return float(np.clip(np.median(insets), 0, 0.05 * min(cw, ch)))
 
 
-def _accept(fit, detections, labels, cells, plane):
+def _accept(fit, detections, labels, cells, plane, blocked):
     """Non-lattice masks that look like coplanar tiles: rectified, aligned and connected.
 
     Acceptance grows outward from the matched cells through accepted tiles, so a strip of cut
@@ -226,6 +242,8 @@ def _accept(fit, detections, labels, cells, plane):
         pixels = int(part.sum())
         if not 0.02 * px * py <= pixels * plane.res**2 <= MAX_ACCEPTED_CELLS * px * py:
             continue
+        if (part & blocked[box]).sum() >= 0.5 * pixels:
+            continue  # floor, bathtub apron, door: tile-like but not this wall
         points = np.column_stack(np.nonzero(part)[::-1]).astype(np.float32)
         (_, _), (w, h), angle = cv2.minAreaRect(points)
         if pixels / max(1.0, (w + 1) * (h + 1)) < RECTANGULARITY_MIN:
@@ -259,7 +277,7 @@ def _close_gaps(region, fit, plane):
     return (rows | columns).astype(bool)
 
 
-def _exclusions(region, undetected, concepts, plane):
+def _exclusions(region, undetected, masks, plane):
     rows, cols = np.nonzero(region)
     claimed = region.copy()
     excluded, outlines = [], {}
@@ -271,11 +289,11 @@ def _exclusions(region, undetected, concepts, plane):
             band[:, cols.min() : cols.max() + 1] = True
         else:
             band[rows.min() : rows.max() + 1, :] = True
-        for concept, found in concepts.items():
-            if not found:
+        for concept, mask in masks.items():
+            if concept in BLOCKING_ONLY:
                 continue
             opening = concept in OPENING_CONCEPTS
-            part = plane.mask(found) & plane.frame & (box if opening else band) & ~claimed
+            part = mask & (box if opening else band) & ~claimed
             claimed |= part
             if part.any():
                 outlines[concept] = plane.outlines(part)

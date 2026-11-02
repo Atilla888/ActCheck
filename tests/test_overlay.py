@@ -65,3 +65,18 @@ def test_animation_frames(tmp_path):
         assert sum(durations) == pytest.approx(2000, rel=0.1)  # identical held frames merge
         assert animation.n_frames >= 15
         assert animation.size == static.size
+
+
+def test_partial_banner_sits_above_the_photo(tmp_path):
+    image, fit, area = measured_wall()
+    path = render_overlay(
+        image,
+        fit,
+        area,
+        wall_id="w1",
+        status="partial",
+        warnings=["wall_out_of_frame"],
+        out_path=tmp_path / "p.png",
+    )
+    with Image.open(path) as overlay:
+        assert overlay.width == image.width and overlay.height > image.height

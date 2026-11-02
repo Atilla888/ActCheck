@@ -5,6 +5,7 @@ borders, completed gaps) is amber, exclusions are grey with their label, and the
 the area with its 2-sigma interval. Failures get the photo with a reshoot banner instead.
 """
 
+import math
 import os
 from pathlib import Path
 
@@ -48,11 +49,18 @@ def render_overlay(
 ):
     frame, scale = _scaled(image, max_side)
     layer = Image.new("RGBA", frame.size, (0, 0, 0, 0))
-    _draw_measurement(layer, fit, area, scale, len(fit.tiles))
+    _draw_measurement(layer, fit, area, scale, area.full_tiles)
     _caption(layer, _caption_lines(wall_id, fit, area, tile))
+    overlay = Image.alpha_composite(frame.convert("RGBA"), layer)
     if status != "measured":
-        _banner(layer, AMBER, "PARTIAL MEASUREMENT", _reasons(warnings))
-    return _save(Image.alpha_composite(frame.convert("RGBA"), layer), out_path)
+        # Above the photo, so the banner never hides tiles a reviewer needs to check.
+        strip = Image.new("RGBA", (frame.width, frame.height), (0, 0, 0, 0))
+        height = _banner(strip, AMBER, "PARTIAL MEASUREMENT", _reasons(warnings), frame.size)
+        canvas = Image.new("RGBA", (frame.width, frame.height + height), WHITE + (255,))
+        canvas.paste(strip.crop((0, 0, frame.width, height)), (0, 0))
+        canvas.paste(overlay, (0, height))
+        overlay = canvas
+    return _save(overlay, out_path)
 
 
 def render_failure(image, *, wall_id, reasons, out_path, max_side=2000):
@@ -66,6 +74,28 @@ def render_failure(image, *, wall_id, reasons, out_path, max_side=2000):
     layer = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
     _banner(layer, RED, f"{wall_id}: NOT MEASURED — please reshoot", _reasons(reasons))
     return _save(Image.alpha_composite(canvas, layer), out_path)
+
+
+def render_objects(image, detections, *, concept, out_path, max_side=2000):
+    """Outline and number every instance of one concept, with the count as caption."""
+    frame, scale = _scaled(image, max_side)
+    layer = Image.new("RGBA", frame.size, (0, 0, 0, 0))
+    draw = ImageDraw.Draw(layer)
+    font = _font(max(frame.size) * 0.02)
+    width = max(2, round(max(frame.size) / 500))
+    for number, detection in enumerate(detections, 1):
+        outer = [c["points"] for c in detection["contours"] if not c.get("hole")]
+        for points in outer:
+            polygon = _points(points, scale)
+            if len(polygon) > 2:
+                draw.polygon(polygon, fill=TEAL + (90,))
+                draw.line(polygon + [polygon[0]], fill=WHITE + (255,), width=width)
+        if outer:
+            x, y = np.mean(np.concatenate([np.asarray(p) for p in outer]), axis=0) * scale
+            draw.text((x, y), str(number), fill=WHITE + (255,), font=font, anchor="mm",
+                      stroke_width=2, stroke_fill=INK + (255,))  # fmt: skip
+    _caption(layer, [f"{concept}: {len(detections)}"])
+    return _save(Image.alpha_composite(frame.convert("RGBA"), layer), out_path)
 
 
 def render_animation(
@@ -90,7 +120,8 @@ def render_animation(
     frame = frame.convert("RGBA")
     total = max(2, round(fps * seconds))
     build = max(1, int(total * 0.75))
-    ordered = sorted(fit.tiles, key=lambda t: (t.j, t.i))
+    blocked = set(area.blocked_ids)
+    ordered = sorted((t for t in fit.tiles if t.det_id not in blocked), key=lambda t: (t.j, t.i))
     polygons = [_tile_polygon(fit, t, scale) for t in ordered]
     frames = []
     for index in range(total):
@@ -201,7 +232,8 @@ def _draw_measurement(layer, fit, area, scale, count):
                 stroke_fill=INK + (255,),
             )  # fmt: skip
     draw = ImageDraw.Draw(layer)
-    ordered = sorted(fit.tiles, key=lambda t: (t.j, t.i))
+    blocked = set(area.blocked_ids)
+    ordered = sorted((t for t in fit.tiles if t.det_id not in blocked), key=lambda t: (t.j, t.i))
     label_size = np.clip(fit.tile_px * scale * 0.32, 9, 22)
     font = _font(label_size)
     for number, tile in enumerate(ordered, 1):
@@ -271,19 +303,22 @@ def _caption(layer, lines):
         y += box[3] - box[1] + pad
 
 
-def _banner(layer, color, title, lines):
+def _banner(layer, color, title, lines, reference=None):
+    """Draw a coloured banner at the top of layer and return its height in pixels."""
     draw = ImageDraw.Draw(layer)
-    width, height = layer.size
+    width, height = reference or layer.size
     title_font = _font(max(width, height) * 0.024)
     font = _font(max(width, height) * 0.017)
     pad = max(width, height) * 0.012
     rows = [(_text(title), title_font)] + [(_text(line), font) for line in lines]
     heights = [draw.textbbox((0, 0), text, font=f)[3] for text, f in rows]
-    draw.rectangle((0, 0, width, sum(heights) + pad * (len(rows) + 1)), fill=color + (235,))
+    bottom = int(math.ceil(sum(heights) + pad * (len(rows) + 1)))
+    draw.rectangle((0, 0, width, bottom), fill=color + (235,))
     y = pad
     for (text, f), h in zip(rows, heights, strict=True):
         draw.text((pad, y), text, fill=WHITE + (255,), font=f)
         y += h + pad
+    return bottom
 
 
 def _reasons(codes):
