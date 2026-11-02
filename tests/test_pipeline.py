@@ -65,6 +65,17 @@ def test_planner_free_form():
     assert (plans[5].method, plans[5].count_concept) == ("object_count", "toilet")
 
 
+def test_grout_not_compared_when_act_has_floor():
+    act = load("free_form_error")
+    floor = act.lines[1].model_copy(
+        update={"line_no": 9, "work_type": "tiling_floor", "description_raw": "Пол"}
+    )
+    act = act.model_copy(update={"lines": [*act.lines, floor]})
+    plans = {p.line_no: p for p in plan(act)}
+    assert plans[3].verifiable == "no"  # Затирка швов may include the floor
+    assert plans[2].method == "tile_area"
+
+
 def test_planner_kazakh_sink():
     plans = {p.line_no: p for p in plan(load("kazakh"))}
     assert plans[2].method == "tile_area"
@@ -86,10 +97,16 @@ def test_over_billed_end_to_end():
     assert c[5].verdict == "consistent"  # one toilet on the photos (two photos, counted once each)
     assert c[1].verdict == "not_verifiable"
     p = insp.protocol
-    assert p.overbilling_min_total == tile.overbilling_min
+    assert c[3].verdict == "over_billed"  # grout follows the tiled area
+    assert c[3].overbilling_min == round((48.5 - 38.0) * 800)
+    assert p.overbilling_min_total == tile.overbilling_min + c[3].overbilling_min
     assert insp.arithmetic_issues  # planted error in this act
     assert any("48,5" in q and "38" in q for q in p.questions)
-    assert len(p.questions) == 1 + len(insp.arithmetic_issues)
+    # tiling, grout, the planted arithmetic error, and records for the hidden plastering
+    assert len(p.questions) == 4
+    assert "акт скрытых работ" in c[1].question
+    assert "21" in c[4].question and "24" in c[4].question
+    assert "9,5" in tile.explanation or "10,5" in tile.explanation
     assert "Завышение" in p.summary
 
 

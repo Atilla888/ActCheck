@@ -10,8 +10,8 @@ from pathlib import Path
 from pydantic import BaseModel
 
 from agent.arithmetic import audit
-from agent.planner import plan
-from agent.protocol import Lang, build_protocol
+from agent.planner import Lang, plan
+from agent.protocol import build_protocol
 from schemas.act import ActDocument, ArithmeticIssue, VerificationPlan
 from schemas.compare import Protocol
 from schemas.measure import ObjectCount, RoomMeasurement, TileSpec
@@ -47,14 +47,18 @@ def inspect(
     lang: Lang | None = None,
     measure_room: MeasureRoom | None = None,
     count_objects: CountObjects | None = None,
+    on_step: Callable[[str], None] = lambda step: None,
 ) -> Inspection:
     """`act` is a parsed ActDocument or the act's page images. `walls` are (wall_id, photo path).
-    Without a tile size or wall photos, tile lines come back `incomplete`, never guessed."""
+    Without a tile size or wall photos, tile lines come back `incomplete`, never guessed.
+    `on_step` receives "parsing", "measuring", "counting", "protocol" as the work progresses."""
     if not isinstance(act, ActDocument):
+        on_step("parsing")
         from agent.act_parser import parse_act
 
         act = parse_act(act)
-    plans = plan(act)
+    lang = lang or language_of(act)
+    plans = plan(act, lang)
     issues = audit(act)
 
     need_area = any(p.method == "tile_area" for p in plans) and walls and tile is not None
@@ -64,10 +68,17 @@ def inspect(
         measure_room = measure_room or default_room
         count_objects = count_objects or default_count
 
-    room = measure_room(walls, tile) if need_area else None
-    counts = {c: [count_objects(path, c) for _, path in walls] for c in concepts} if walls else {}
+    room = None
+    if need_area:
+        on_step("measuring")
+        room = measure_room(walls, tile)
+    counts = {}
+    if concepts and walls:
+        on_step("counting")
+        counts = {c: [count_objects(path, c) for _, path in walls] for c in concepts}
 
-    protocol = build_protocol(act, plans, issues, room, counts, lang or language_of(act))
+    on_step("protocol")
+    protocol = build_protocol(act, plans, issues, room, counts, lang)
     return Inspection(
         act=act, plans=plans, arithmetic_issues=issues, room=room, counts=counts, protocol=protocol
     )

@@ -21,7 +21,9 @@ class LineComparison(BaseModel):
     # conservative: (billed - measured_high) * unit_price; only set for over_billed
     overbilling_min: float | None = None
     evidence: list[str] = Field(default_factory=list)  # overlay paths
-    note: str = ""
+    note: str = ""  # technical, English
+    explanation: str = ""  # for the user, in the protocol language
+    question: str = ""  # to the contractor, in the protocol language; "" = none
 
 
 class Protocol(BaseModel):

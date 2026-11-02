@@ -1,0 +1,44 @@
+{
+  "wall_id": "wall_1",
+  "image_path": "wall_1.png",
+  "tile": {
+    "width_mm": 300.0,
+    "height_mm": 150.0,
+    "grout_mm": 2.0,
+    "source": "box_label"
+  },
+  "status": "measured",
+  "full_tiles": 41,
+  "partial_tiles_equiv": 17.52,
+  "tiled_area_m2": 2.686,
+  "sigma_random_m2": 0.044,
+  "sigma_system_m2": 0.03,
+  "excluded": [
+    {
+      "label": "door",
+      "area_m2": 0.91,
+      "reason": "opening"
+    },
+    {
+      "label": "bathtub",
+      "area_m2": 1.211,
+      "reason": "not_visible"
+    },
+    {
+      "label": "undetected",
+      "area_m2": 0.117,
+      "reason": "not_visible"
+    }
+  ],
+  "overlay_png": "wall_1_overlay.jpg",
+  "quality": {
+    "method": "sam_lattice",
+    "n_confident_tiles": 41,
+    "n_merged_suspected": 4,
+    "lattice_residual_px": 2.18,
+    "lens_straightness_px": 0.28
+  },
+  "warnings": [
+    "merged_tiles"
+  ]
+}
