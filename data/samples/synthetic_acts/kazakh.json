@@ -1,0 +1,59 @@
+{
+ "doc_kind": "completion_act",
+ "language": "kk",
+ "lines": [
+  {
+   "line_no": 1,
+   "description_raw": "Ескі плитканы бөлшектеу",
+   "work_type": "demolition",
+   "unit": "m2",
+   "unit_raw": "ш.м.",
+   "quantity": 18.0,
+   "unit_price": 1300,
+   "amount_stated": 23400.0
+  },
+  {
+   "line_no": 2,
+   "description_raw": "Қабырғаларды керамикалық плиткамен қаптау",
+   "work_type": "tiling_wall",
+   "unit": "m2",
+   "unit_raw": "ш.м.",
+   "quantity": 27.4,
+   "unit_price": 9200,
+   "amount_stated": 252080.0
+  },
+  {
+   "line_no": 3,
+   "description_raw": "Еденге плитка төсеу",
+   "work_type": "tiling_floor",
+   "unit": "m2",
+   "unit_raw": "ш.м.",
+   "quantity": 3.6,
+   "unit_price": 10500,
+   "amount_stated": 37800.0
+  },
+  {
+   "line_no": 4,
+   "description_raw": "Гидрооқшаулау",
+   "work_type": "waterproofing",
+   "unit": "m2",
+   "unit_raw": "ш.м.",
+   "quantity": 6.0,
+   "unit_price": 3000,
+   "amount_stated": 18000.0
+  },
+  {
+   "line_no": 5,
+   "description_raw": "Раковина орнату",
+   "work_type": "plumbing_fixture",
+   "unit": "pcs",
+   "unit_raw": "дана",
+   "quantity": 1,
+   "unit_price": 12000,
+   "amount_stated": 12000
+  }
+ ],
+ "total_stated": 343280.0,
+ "vat_stated": null,
+ "planted_errors": []
+}

@@ -1,0 +1,64 @@
+{
+ "doc_kind": "completion_act",
+ "language": "ru",
+ "lines": [
+  {
+   "line_no": 1,
+   "description_raw": "Выравнивание стен штукатуркой",
+   "work_type": "plastering",
+   "unit": "m2",
+   "unit_raw": "м²",
+   "quantity": 28.0,
+   "unit_price": 2500,
+   "amount_stated": 70000.0
+  },
+  {
+   "line_no": 2,
+   "description_raw": "Облицовка стен плиткой 300×600",
+   "work_type": "tiling_wall",
+   "unit": "m2",
+   "unit_raw": "м²",
+   "quantity": 48.5,
+   "unit_price": 9500,
+   "amount_stated": 460750.0
+  },
+  {
+   "line_no": 3,
+   "description_raw": "Затирка швов",
+   "work_type": "other",
+   "unit": "m2",
+   "unit_raw": "м²",
+   "quantity": 48.5,
+   "unit_price": 800,
+   "amount_stated": 38800.0
+  },
+  {
+   "line_no": 4,
+   "description_raw": "Установка розеток и выключателей",
+   "work_type": "electrical_point",
+   "unit": "pcs",
+   "unit_raw": "шт",
+   "quantity": 6,
+   "unit_price": 3500,
+   "amount_stated": 24000
+  },
+  {
+   "line_no": 5,
+   "description_raw": "Установка унитаза (инсталляция)",
+   "work_type": "plumbing_fixture",
+   "unit": "pcs",
+   "unit_raw": "шт",
+   "quantity": 1,
+   "unit_price": 25000,
+   "amount_stated": 25000
+  }
+ ],
+ "total_stated": 618550.0,
+ "vat_stated": null,
+ "planted_errors": [
+  {
+   "line_no": 4,
+   "kind": "line_amount"
+  }
+ ]
+}

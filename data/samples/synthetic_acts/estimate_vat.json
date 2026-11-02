@@ -1,0 +1,79 @@
+{
+ "doc_kind": "estimate",
+ "language": "ru",
+ "lines": [
+  {
+   "line_no": 1,
+   "description_raw": "Демонтаж ванны и плитки",
+   "work_type": "demolition",
+   "unit": "lump_sum",
+   "unit_raw": "компл.",
+   "quantity": 1,
+   "unit_price": 35000,
+   "amount_stated": 35000
+  },
+  {
+   "line_no": 2,
+   "description_raw": "Облицовка стен плиткой (кабанчик 75×150)",
+   "work_type": "tiling_wall",
+   "unit": "m2",
+   "unit_raw": "м2",
+   "quantity": 22.3,
+   "unit_price": 12500,
+   "amount_stated": 278750.0
+  },
+  {
+   "line_no": 3,
+   "description_raw": "Укладка плитки на пол",
+   "work_type": "tiling_floor",
+   "unit": "m2",
+   "unit_raw": "м2",
+   "quantity": 3.9,
+   "unit_price": 10000,
+   "amount_stated": 39000.0
+  },
+  {
+   "line_no": 4,
+   "description_raw": "Покраска потолка водоэмульсионной краской",
+   "work_type": "painting",
+   "unit": "m2",
+   "unit_raw": "м2",
+   "quantity": 4.2,
+   "unit_price": 1800,
+   "amount_stated": 7560.0
+  },
+  {
+   "line_no": 5,
+   "description_raw": "Плитка настенная 75×150 (материал)",
+   "work_type": "materials",
+   "unit": "m2",
+   "unit_raw": "м2",
+   "quantity": 24.5,
+   "unit_price": 7800,
+   "amount_stated": 191100.0
+  },
+  {
+   "line_no": 6,
+   "description_raw": "Клей плиточный, 25 кг (материал)",
+   "work_type": "materials",
+   "unit": "pcs",
+   "unit_raw": "меш.",
+   "quantity": 8,
+   "unit_price": 3200,
+   "amount_stated": 25600
+  },
+  {
+   "line_no": 7,
+   "description_raw": "Вывоз строительного мусора",
+   "work_type": "other",
+   "unit": "lump_sum",
+   "unit_raw": "усл.",
+   "quantity": 1,
+   "unit_price": 15000,
+   "amount_stated": 15000
+  }
+ ],
+ "total_stated": 592010.0,
+ "vat_stated": 63429.64,
+ "planted_errors": []
+}
