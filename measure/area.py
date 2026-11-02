@@ -22,7 +22,7 @@ TILE_TOLERANCE_MM = {"box_label": 0.5, "tape": 1.0, "act": 1.5, "user": 1.5}
 MAX_COMPLETED_CELLS = 4
 MAX_RASTER = 4000  # plane raster pixels per side
 IMAGE_SIDE = 2000  # detections are rasterised at this long side
-CONCEPT_MARGIN_MM = 3000  # how far beyond the matched cells exclusions are considered
+REACH_MARGIN_MM = 3000  # how far beyond the matched cells tiles and exclusions are considered
 EDGE_PX = 1.0  # mask boundary localisation in image pixels
 BOOTSTRAP = 64
 MAX_ACCEPTED_CELLS = 4  # larger rectified masks are walls, mirrors or merged blobs
@@ -57,7 +57,7 @@ def measure_area(fit, detections, image_size, tile, concepts=None, *, seed=0):
     concepts = concepts or {}
     px, py = fit.pitch
     cell_area = px * py
-    plane = _Plane(fit, image_size, concepts)
+    plane = _Plane(fit, image_size, concepts, detections)
     labels = plane.labels([d["contours"] for d in detections])
     erosion = _erosion_mm(fit, detections, labels, plane)
     masks = {c: plane.mask(found) & plane.frame for c, found in concepts.items() if found}
@@ -68,7 +68,7 @@ def measure_area(fit, detections, image_size, tile, concepts=None, *, seed=0):
     for tile_ in fit.tiles:
         (blocked_ids if plane.blocked_at(fit, tile_, blocked) else kept).append(tile_)
     cells = plane.cells(fit, kept)
-    accepted, partial_ids = _accept(fit, detections, labels, cells, plane, blocked)
+    accepted, partial_ids = _accept(fit, detections, labels, cells, plane, blocked, erosion)
     grow = max(0, int(round((erosion + tile.grout_mm / 2) / plane.res)))
     if grow:
         accepted = cv2.dilate(accepted.astype(np.uint8), np.ones((2 * grow + 1,) * 2, np.uint8))
@@ -87,6 +87,7 @@ def measure_area(fit, detections, image_size, tile, concepts=None, *, seed=0):
         else:
             undetected[hole] |= part
     region |= completed
+    undetected |= _hull_gaps(region, blocked | undetected, plane, cell_area)
     completed_cells = int(round(completed.sum() * plane.res**2 / cell_area))
     completed |= bridged
     full = len(kept)
@@ -119,19 +120,19 @@ def measure_area(fit, detections, image_size, tile, concepts=None, *, seed=0):
 class _Plane:
     """A raster of the wall plane around the matched cells, and image→raster warping."""
 
-    def __init__(self, fit, image_size, concepts):
+    def __init__(self, fit, image_size, concepts, detections=()):
         px, py = fit.pitch
         rects = np.array([fit.cell_rect(t.i, t.j) for t in fit.tiles])
         low, high = rects[:, :2].min(axis=0), rects[:, 2:].max(axis=0)
-        self.cells_low, self.cells_high = low, high
         lo, hi = low - 2 * np.array([px, py]), high + 2 * np.array([px, py])
-        for found in concepts.values():
-            for detection in found:
-                points = fit.to_plane(_outer_points(detection["contours"]))
-                points = points[np.isfinite(points).all(axis=1)]
-                if len(points):
-                    lo = np.minimum(lo, np.maximum(points.min(axis=0), low - CONCEPT_MARGIN_MM))
-                    hi = np.maximum(hi, np.minimum(points.max(axis=0), high + CONCEPT_MARGIN_MM))
+        # Tile masks reachable through accepted neighbours, and exclusions, widen the raster.
+        others = [d for found in concepts.values() for d in found] + list(detections)
+        if others:
+            points = fit.to_plane(np.concatenate([_outer_points(d["contours"]) for d in others]))
+            points = points[np.isfinite(points).all(axis=1)]
+            if len(points):
+                lo = np.minimum(lo, np.maximum(points.min(axis=0), low - REACH_MARGIN_MM))
+                hi = np.maximum(hi, np.minimum(points.max(axis=0), high + REACH_MARGIN_MM))
         self.res = max(float(np.clip(min(px, py) / 60, 1, 5)), float((hi - lo).max() / MAX_RASTER))
         self.lo = lo
         self.shape = (int(math.ceil((hi[1] - lo[1]) / self.res)) + 1,
@@ -223,11 +224,12 @@ def _erosion_mm(fit, detections, labels, plane):
     return float(np.clip(np.median(insets), 0, 0.05 * min(cw, ch)))
 
 
-def _accept(fit, detections, labels, cells, plane, blocked):
+def _accept(fit, detections, labels, cells, plane, blocked, erosion=0.0):
     """Non-lattice masks that look like coplanar tiles: rectified, aligned and connected.
 
-    Acceptance grows outward from the matched cells through accepted tiles, so a strip of cut
-    tiles beside a door counts even when it is several tiles away from the nearest lattice cell.
+    Masks whose rectified edges lie on this wall's joint lines are accepted wherever they are;
+    from them and the matched cells, acceptance grows through neighbouring accepted tiles. So
+    a strip of cut tiles beyond a door counts even when every tile linking it was missed.
     """
     px, py = fit.pitch
     reach = max(1, int(round(max(px, py) / plane.res)))
@@ -253,6 +255,13 @@ def _accept(fit, detections, labels, cells, plane, blocked):
         candidates.append((detection["id"], box, part, pixels))
     accepted, ids = np.zeros(plane.shape, bool), []
     grown = cells.copy()
+    for candidate in candidates:
+        if _on_joint_lines(fit, candidate[1], candidate[2], plane, erosion):
+            detection_id, box, part, _ = candidate
+            accepted[box] |= part
+            grown[box] |= part
+            ids.append(detection_id)
+    candidates = [c for c in candidates if c[0] not in set(ids)]
     while candidates:
         near = cv2.dilate(grown.astype(np.uint8), kernel) > 0
         joined = [c for c in candidates if (c[2] & near[c[1]]).sum() >= 0.5 * c[3]]
@@ -264,6 +273,64 @@ def _accept(fit, detections, labels, cells, plane, blocked):
             ids.append(detection_id)
         candidates = [c for c in candidates if c[0] not in set(ids)]
     return accepted, ids
+
+
+def _on_joint_lines(fit, box, part, plane, erosion):
+    """True when a single-tile-sized mask spans one tile row, or meets a row and a column edge."""
+    (px, py), (cw, ch) = fit.pitch, fit.cell
+    rows, cols = np.nonzero(part)
+    x0 = plane.lo[0] + (box[1].start + cols.min()) * plane.res
+    x1 = plane.lo[0] + (box[1].start + cols.max() + 1) * plane.res
+    y0 = plane.lo[1] + (box[0].start + rows.min()) * plane.res
+    y1 = plane.lo[1] + (box[0].start + rows.max() + 1) * plane.res
+    if x1 - x0 > 1.1 * px or y1 - y0 > 1.1 * py:
+        return False
+    tolerance = max(3 * plane.res, 0.06 * min(cw, ch))
+    j = round((y0 + y1) / 2 / py)
+    top = abs(y0 - (j * py - ch / 2 + erosion)) <= tolerance
+    bottom = abs(y1 - (j * py + ch / 2 - erosion)) <= tolerance
+    if top and bottom:
+        return True
+    offset = _row_offset(fit, j)
+    if offset is None or not (top or bottom):
+        return False
+    left = (x0 - erosion + cw / 2 - offset) / px
+    right = (x1 + erosion - cw / 2 - offset) / px
+    return min(abs(left - round(left)), abs(right - round(right))) * px <= tolerance
+
+
+def _hull_gaps(region, explained, plane, cell_area):
+    """Unexplained area inside the counted outline: missed tiles we cannot see the edge of.
+
+    Openings and occluders are explained elsewhere; what remains inside the convex hull of the
+    counted region is reported as undetected rather than silently left out.
+    """
+    points = np.column_stack(np.nonzero(region)[::-1]).astype(np.int32)
+    if len(points) < 3:
+        return np.zeros_like(region)
+    hull = np.zeros(region.shape, np.uint8)
+    cv2.fillPoly(hull, [cv2.convexHull(points)], 1)
+    gaps = hull.astype(bool) & ~region & ~explained & plane.frame
+    size = max(3, int(round(0.3 * math.sqrt(cell_area) / plane.res)))
+    opened = cv2.morphologyEx(
+        gaps.astype(np.uint8), cv2.MORPH_OPEN, np.ones((size, size), np.uint8)
+    )
+    return opened.astype(bool)
+
+
+def _row_offset(fit, j):
+    """Offset of row j, or of matched rows with the same parity (stack and running bond)."""
+    if j in fit.row_offsets:
+        return fit.row_offsets[j]
+    px = fit.pitch[0]
+    same = [o for row, o in fit.row_offsets.items() if row % 2 == j % 2]
+    if not same:
+        return None
+    angles = 2 * np.pi * np.asarray(same) / px
+    spread = np.hypot(np.sin(angles).mean(), np.cos(angles).mean())
+    if spread < 0.95:  # irregular offsets: no pattern to extend
+        return None
+    return float(np.arctan2(np.sin(angles).mean(), np.cos(angles).mean()) / (2 * np.pi) * px % px)
 
 
 def _close_gaps(region, fit, plane):

@@ -225,7 +225,8 @@ def _draw_measurement(layer, fit, area, scale, count):
         if len(found):
             y, x = found.mean(axis=0)
             value = sum(r.area_m2 for r in area.excluded if r.label == label)
-            text = _text(f"{label.replace('_', ' ')} {value:.2f} m²")
+            name = "not detected" if label == "undetected" else label.replace("_", " ")
+            text = _text(f"{name} {value:.2f} m²")
             font = _font(max(size) * 0.018)
             ImageDraw.Draw(layer).text(
                 (x, y), text, fill=WHITE + (255,), font=font, anchor="mm", stroke_width=2,

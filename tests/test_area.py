@@ -143,3 +143,37 @@ def test_floor_masks_block_acceptance():
     _, area = run(wall, detections=detections + floor, concepts=concepts)
     assert area.tiled_area_m2 == pytest.approx(render.tiled_area_m2, rel=0.01)
     assert all(region.label != "floor" for region in area.excluded)
+
+
+def test_acceptance_reaches_tiles_beyond_the_door():
+    wall = SyntheticWall(
+        wall_w_mm=2118, wall_h_mm=2548, tile_w_mm=300, tile_h_mm=600, yaw_deg=33.6,
+        pitch_deg=1.8, roll_deg=2.9, fill=0.86, door=(1152.8, 548, 788, 2000), seed=37,
+    )  # fmt: skip
+    render = render_wall(wall)
+    size = (render.image.shape[1], render.image.shape[0])
+    concepts = {"door": [fake_concept(render.door_polygon, "door", size)]}
+    _, area = run(wall, concepts=concepts)
+    assert area.tiled_area_m2 == pytest.approx(render.visible_tiled_area_m2, rel=0.03)
+    door = next(r for r in area.excluded if r.label == "door")
+    assert door.area_m2 == pytest.approx(render.opening_area_m2, rel=0.05)
+
+
+def test_grid_aligned_tiles_count_without_a_connecting_chain():
+    wall = SyntheticWall(
+        wall_w_mm=2118, wall_h_mm=2548, tile_w_mm=300, tile_h_mm=600, yaw_deg=33.6,
+        pitch_deg=1.8, roll_deg=2.9, fill=0.86, door=(1152.8, 548, 788, 2000), seed=37,
+    )  # fmt: skip
+    render = render_wall(wall)
+    size = (render.image.shape[1], render.image.shape[0])
+    detections = fake_detections(render, seed=37)
+    # Every tile above the door is missed, so nothing links the strip beyond the door.
+    detections = [d for d in detections if not (d["truth"] and d["truth"]["i"] in (4, 5, 6)
+                                                and d["truth"]["j"] == 0)]  # fmt: skip
+    concepts = {"door": [fake_concept(render.door_polygon, "door", size)]}
+    _, area = run(wall, detections=detections, concepts=concepts)
+    above_door = 3 * 0.6 * 0.302  # three missed tiles, only ~3 % of the wall
+    expected = render.visible_tiled_area_m2 - above_door
+    assert area.tiled_area_m2 == pytest.approx(expected, rel=0.03)
+    # The missed corner lies inside the counted outline: it becomes an allowance, not silence.
+    assert area.undetected_m2 > 0.05 * area.tiled_area_m2  # enough for status "partial"
