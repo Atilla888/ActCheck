@@ -260,3 +260,14 @@ def test_completed_area_widens_sigma_and_is_capped():
     _, two = run(wall, detections=without({(2, 2), (3, 2)}))  # 0.72 m2: never filled in
     assert two.tiled_area_m2 == pytest.approx(render.visible_tiled_area_m2 - 2 * cell, rel=0.02)
     assert two.undetected_m2 == pytest.approx(2 * cell, rel=0.1)
+
+
+@pytest.mark.parametrize(("tile", "spill"), [(200, 80), (150, 90)])
+def test_door_mask_spilling_over_tiles_keeps_them(tile, spill):
+    # A door outline drawn over the casing and the first strip of tiles around the door.
+    wall = SyntheticWall(tile_w_mm=tile, tile_h_mm=tile, door=(800, 100, 800, 2000), yaw_deg=12,
+                         seed=95)  # fmt: skip
+    render = render_wall(wall)
+    door = wall_block(render, 800 - spill, 100 - spill, 1600 + spill, 2100, "door")
+    _, area = run(wall, concepts={"door": [door]})
+    assert area.tiled_area_m2 == pytest.approx(render.tiled_area_m2, rel=0.02)

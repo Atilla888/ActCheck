@@ -100,6 +100,15 @@ def measure_area(fit, detections, image_size, tile, concepts=None, *, seed=0, im
     # A kept mask still covering most of a matched cell is lifted there; covering less, an
     # exclusion clips the cell (an L-shaped tile at a door corner). The floor never clips.
     conflict_ids.update(plane.covered_tiles(fit, exclusions))
+    # Wherever SAM saw a tile, a door/window/mirror/bathtub outline is wrong there (a casing or
+    # a glass screen drawn over tiles): lift it from every detected tile mask. The floor stays.
+    grow = max(1, int(round((erosion + tile.grout_mm / 2) / plane.res)) + 1)
+    kernel = np.ones((2 * grow + 1,) * 2, np.uint8)
+    tiles_seen = cv2.dilate((labels > 0).astype(np.uint8), kernel) > 0
+    floor = blocked & ~exclusions
+    exclusions &= ~tiles_seen
+    blocked = exclusions | floor
+    masks = {c: (m if c in BLOCKING_ONLY else m & ~tiles_seen) for c, m in masks.items()}
     seen = np.zeros(plane.shape, bool)
     for tile_ in fit.tiles:
         box = plane.cell_box(fit, tile_)
