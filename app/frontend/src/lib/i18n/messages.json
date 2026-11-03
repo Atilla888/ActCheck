@@ -1518,5 +1518,9 @@
   "The analysis has not been run yet. No measurements, discrepancies, or amounts to clarify have been established.": {
     "ru": "Анализ ещё не запускался. Замеров, расхождений и сумм к уточнению пока нет.",
     "kk": "Талдау әлі іске қосылмаған. Өлшемдер, сәйкессіздіктер және нақтыланатын сомалар әзірге жоқ."
+  },
+  "The server restarted and lost this analysis. Run it again.": {
+    "ru": "Сервер перезапустился, и этот анализ потерялся. Запустите его ещё раз.",
+    "kk": "Сервер қайта іске қосылып, бұл талдау жоғалды. Оны қайта іске қосыңыз."
   }
 }

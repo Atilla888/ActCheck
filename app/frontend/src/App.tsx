@@ -268,13 +268,24 @@ function App() {
           .then((job) =>
             setProjects((items) =>
               items.map((item) =>
-                item.job?.id === job.id
-                  ? {
-                      ...item,
-                      job: { id: job.id, status: job.status, error: job.error },
-                      analysis: job.result ?? item.analysis,
-                    }
-                  : item
+                item.job?.id !== id
+                  ? item
+                  : job
+                    ? {
+                        ...item,
+                        job: { id, status: job.status, error: job.error },
+                        analysis: job.result ?? item.analysis,
+                      }
+                    : {
+                        ...item,
+                        job: {
+                          id,
+                          status: "failed",
+                          error: t(
+                            "The server restarted and lost this analysis. Run it again."
+                          ),
+                        },
+                      }
               )
             )
           )
@@ -282,7 +293,7 @@ function App() {
       }
     }, 1500)
     return () => window.clearInterval(timer)
-  }, [pendingKey])
+  }, [pendingKey, t])
   async function runAnalysis() {
     const target = project
     try {
