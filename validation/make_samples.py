@@ -52,12 +52,12 @@ def main():
         [(w, str(p)) for w, p in paths.items()], TILE, output_dir=work, segmenter=segment
     )
     for index, item in enumerate(room.walls):
-        shutil.copy(item.overlay_png, SAMPLES / f"room_example_{item.wall_id}.png")
+        # wall_1 is measured exactly as in measure_example: reuse that overlay, no duplicate.
+        name = "measure_example.png" if item.wall_id == "wall_1" else f"room_{item.wall_id}.png"
+        if item.wall_id != "wall_1":
+            shutil.copy(item.overlay_png, SAMPLES / name)
         room.walls[index] = item.model_copy(
-            update={
-                "image_path": f"{item.wall_id}.png",
-                "overlay_png": f"data/samples/room_example_{item.wall_id}.png",
-            }
+            update={"image_path": f"{item.wall_id}.png", "overlay_png": f"data/samples/{name}"}
         )
     (SAMPLES / "room_example.json").write_text(room.model_dump_json(indent=2) + "\n")
     truth = {w: round(r.visible_tiled_area_m2, 3) for w, r in renders.items()}

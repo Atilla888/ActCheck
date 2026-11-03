@@ -113,18 +113,21 @@ uv run python -m validation.synthetic_eval --mode sam            # 16 renders th
 
 | Mode | Walls | measured | partial | unavailable | measured: median / max abs error | within 2σ |
 | --- | ---: | ---: | ---: | ---: | --- | ---: |
-| SAM-like masks (dropout ≤15 %, merges, false positives) | 40 | 35 | 3 | 2 | 0.57 % / 4.86 % | 35/35 |
-| SAM 3.1 on renders | 16 | 11 | 4 | 1 | 0.88 % / 1.33 % | 11/11 |
+| SAM-like masks (dropout ≤15 %, merges, false positives; ¼ with a tiled neighbouring wall or floor) | 40 | 34 | 2 | 4 | 0.61 % / 4.6 % | 34/34 |
+| SAM 3.1 on renders | 16 | 11 | 4 | 1 | 0.89 % / 2.4 % | 11/11 |
 
-Partial walls carry large errors by design (SAM saw part of the wall; all were flagged), and the
-25 mm mosaic render was refused. Renders are cleaner than real bathrooms: this is evidence that
-the geometry is right, not field accuracy.
+"Within 2σ" uses 2(σr + σs), the bound `agent/compare.py` applies to one wall. Partial walls
+carry large errors by design (SAM saw part of the wall; all were flagged), and the 25 mm mosaic
+render was refused. Renders are cleaner than real bathrooms: this is evidence that the geometry
+is right, not field accuracy.
 
 **Planted-inflation ROC** (`roc.py`). Bills inflated 0–30 % over known truth; the agent's rule
 `billed > measured + k·σ + hidden`, walls that are not `measured` never flag (the agent answers
-`incomplete`). At k = 2: SAM-like masks — 0 % false alarms, 92 % of ≥20 % inflations caught (hidden
-allowances absorb smaller ones); SAM renders — 1 false alarm in 15 honest bills, from a synthetic
-bathtub band SAM did not recognise (no hidden allowance). These are planted, not observed bills.
+`incomplete`). At k = 2: SAM-like masks — no false alarms, 58 % of 20 % inflations caught (hidden
+and inferred-area allowances absorb smaller ones on these deliberately degraded masks); SAM
+renders — 67 % of 5 % inflations caught (every measured wall), 1 false alarm in 15 honest bills,
+from a synthetic bathtub band SAM did not recognise (no hidden allowance). Planted, not observed
+bills.
 
 ```sh
 uv run python -m validation.roc outputs/synthetic_eval/roc_input_sam.json --out outputs/validation/roc_synthetic_sam.json

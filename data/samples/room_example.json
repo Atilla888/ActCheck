@@ -11,14 +11,14 @@
       },
       "status": "measured",
       "full_tiles": 41,
-      "partial_tiles_equiv": 17.52,
-      "tiled_area_m2": 2.686,
-      "sigma_random_m2": 0.044,
-      "sigma_system_m2": 0.03,
+      "partial_tiles_equiv": 20.33,
+      "tiled_area_m2": 2.815,
+      "sigma_random_m2": 0.272,
+      "sigma_system_m2": 0.031,
       "excluded": [
         {
           "label": "door",
-          "area_m2": 0.91,
+          "area_m2": 0.917,
           "reason": "opening"
         },
         {
@@ -28,11 +28,11 @@
         },
         {
           "label": "undetected",
-          "area_m2": 0.117,
+          "area_m2": 0.053,
           "reason": "not_visible"
         }
       ],
-      "overlay_png": "data/samples/room_example_wall_1.png",
+      "overlay_png": "data/samples/measure_example.png",
       "quality": {
         "method": "sam_lattice",
         "n_confident_tiles": 41,
@@ -53,20 +53,14 @@
         "grout_mm": 2.0,
         "source": "box_label"
       },
-      "status": "partial",
+      "status": "measured",
       "full_tiles": 88,
-      "partial_tiles_equiv": 24.02,
-      "tiled_area_m2": 5.142,
-      "sigma_random_m2": 0.039,
-      "sigma_system_m2": 0.057,
-      "excluded": [
-        {
-          "label": "undetected",
-          "area_m2": 0.258,
-          "reason": "not_visible"
-        }
-      ],
-      "overlay_png": "data/samples/room_example_wall_2.png",
+      "partial_tiles_equiv": 22.86,
+      "tiled_area_m2": 5.089,
+      "sigma_random_m2": 0.262,
+      "sigma_system_m2": 0.056,
+      "excluded": [],
+      "overlay_png": "data/samples/room_wall_2.png",
       "quality": {
         "method": "sam_lattice",
         "n_confident_tiles": 88,
@@ -75,16 +69,13 @@
         "lens_straightness_px": 0.25
       },
       "warnings": [
-        "merged_tiles",
-        "undetected_area"
+        "merged_tiles"
       ]
     }
   ],
-  "status": "partial",
-  "total_tiled_area_m2": 7.828,
-  "sigma_total_m2": 0.146,
-  "hidden_area_m2": 1.586,
-  "unverified_walls": [
-    "wall_2"
-  ]
+  "status": "measured",
+  "total_tiled_area_m2": 7.904,
+  "sigma_total_m2": 0.465,
+  "hidden_area_m2": 1.264,
+  "unverified_walls": []
 }

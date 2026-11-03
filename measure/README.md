@@ -30,26 +30,32 @@ and [`room_example.json`](../data/samples/room_example.json) with their overlays
    the tile lattice (pitch = tile + joint). Scale comes from the pitch, not from mask edges.
    Stack and running bond, both orientations; merged masks, cut tiles and tiles from other
    planes are rejected.
-3. **Area** (`area.py`): matched tiles count one pitch cell each; cut tiles, borders and
-   bands count when their rectified mask is an aligned rectangle on the wall's joint lines or
-   next to counted tiles. Single missed tiles are bridged, row ends cut short by missed edge
-   tiles follow their neighbours (≤2 tiles, adds uncertainty), and unexplained gaps inside the
-   counted outline are reported, never silently dropped. Exclusion masks (and the floor) block
-   counting.
-4. **Overlay** (`overlay.py`): teal = matched tiles (numbered), amber = other counted area,
-   dashed = inferred, grey = exclusions with their area, caption `A ± 2σ m² (2σ)`.
+3. **Area** (`area.py`): matched tiles count one pitch cell each. Other masks count only when
+   they are at most one tile, keep a constant thickness once rectified (a tile of a neighbouring
+   wall or the floor narrows towards its own vanishing point) and lie on this wall's joint lines
+   (a cut row shares its joint with the matched rows). Single missed tiles are bridged, row ends
+   cut short by missed edge tiles follow their neighbours (≤2 tiles), holes up to 0.6 m² are
+   completed; all inferred area adds half its size to σ. Larger gaps are reported, never
+   silently dropped. Door/window/mirror masks lying mostly on matched tiles are ignored (the
+   tiles are visible); the floor mask only blocks masks beyond the wall.
+4. **Probe** (`probe.py`): the ring of lattice cells around the counted area is checked in the
+   photo; cells with the matched tiles' colour and joint contrast mean SAM missed tiles.
+5. **Overlay** (`overlay.py`): teal = matched tiles (numbered), amber = other counted area,
+   dashed = inferred, grey = exclusions with their area, caption `A ± 2(σr + σs) m² (2σ)`, the
+   bound `compare.py` applies to one wall.
 
 ## Statuses — what the agent should do
 
 | `status` | Meaning | Agent behaviour |
 | --- | --- | --- |
-| `measured` | Lattice fits, whole tiled wall in frame | Compare `tiled_area_m2 ± 2σ` + hidden allowance (`agent/compare.py`) |
+| `measured` | Lattice fits, whole tiled wall in frame, no sign of missed tiles | Compare `tiled_area_m2 ± 2σ` + hidden allowance (`agent/compare.py`) |
 | `partial` | A number exists but is not trustworthy for over-billing | `measure_room` lists the wall in `unverified_walls`, so `compare.py` answers `incomplete`; ask for a reshoot with the reasons |
 | `unavailable` | No honest number; area fields are `None` | Ask for a reshoot; never treat as 0 m² |
 
 | Warning | Status effect | Tell the user |
 | --- | --- | --- |
-| `wall_out_of_frame` | partial | Step back so the whole tiled wall plus a margin is in the photo |
+| `wall_out_of_frame` | partial | The counted tiles reach (or come within half a tile of) the photo edge: step back so the whole tiled wall plus a margin is in the photo |
+| `uncounted_tiles` | partial | Tiles seem to continue beyond the counted area (missed by segmentation): retake in even light, closer |
 | `undetected_area` | partial | Part of the wall was not recognised (glare, cover): retake in even light |
 | `high_residual` | partial | Joints don't fit one flat grid: main camera 1×, frontal, one wall per photo |
 | `merged_tiles` | — | Informational: SAM merged neighbouring tiles; the lattice compensates |
@@ -84,8 +90,10 @@ and [`room_example.json`](../data/samples/room_example.json) with their overlays
   MP4 of the tiles lighting up (video and X).
 - Needs `META_API_KEY` in `.env` for uncached photos. Responses and decoded masks are cached in
   `data/cache/sam_benchmark/`, so a repeated photo costs nothing and returns identical results.
-- Mask decoding runs in worker processes: scripts must use `if __name__ == "__main__":`
-  (otherwise it falls back to one process, slower). `ACTCHECK_SAM_WORKERS=1` disables workers.
+- Mask decoding runs in up to 4 worker processes (`ACTCHECK_SAM_WORKERS`, 2 in the container,
+  1 disables them). Scripts must use `if __name__ == "__main__":`; `segment()` refuses to run
+  inside a worker, so an unguarded script cannot repeat SAM requests. Photos up to 200 MP are
+  accepted (large JPEGs decode at a reduced scale).
   `ACTCHECK_FONT` sets a TrueType font for overlays (else system Arial/DejaVu, else ASCII text).
 - Cost: 15 SAM images per wall (1 + 9 crops + 4 exclusions + floor) ≈ $0.04. Time: a few seconds
   when cached; uncached roughly 30–60 s per wall (SAM latency ~9 s per request, 6 in parallel).
@@ -93,13 +101,15 @@ and [`room_example.json`](../data/samples/room_example.json) with their overlays
 ## Validation (see [validation/README.md](../validation/README.md))
 
 - **Synthetic, real SAM 3.1** — 16 rendered walls with exact areas: 11 `measured`, median error
-  0.88 %, max 1.33 %, all within 2σ; 4 `partial` (SAM saw only part of the wall, all flagged);
-  1 `unavailable` (25 mm mosaic).
-- **Synthetic, SAM-like masks** — 40 random walls: 35 `measured`, median 0.57 %, max 4.86 %, all
-  within 2σ.
+  0.89 %, max 2.4 %, all within 2(σr + σs); 4 `partial` (SAM saw only part of the wall, all
+  flagged); 1 `unavailable` (25 mm mosaic).
+- **Synthetic, SAM-like masks** — 40 random walls, a quarter with a tiled neighbouring wall or
+  floor in the frame: 34 `measured`, median 0.61 %, max 4.6 %, all within 2σ; 2 `partial`;
+  4 `unavailable` (too few tiles).
 - **Reference photos** (20 web photos, no physical scale): 14 `partial`, 6 `unavailable`, no
-  area reported; overlays show plausible single-wall fits.
+  area reported.
 - **Field**: not yet measured. `validation/FIELD_PROTOCOL.md` describes the 1–2 wall check.
 
-Synthetic accuracy is not field accuracy. Unsupported: curved walls, herringbone, walls spanning
-several planes in one photo, mosaic tiles smaller than ~30 px in the photo.
+Synthetic accuracy is not field accuracy. Unsupported: curved walls, herringbone, mosaic tiles
+smaller than ~30 px in the photo. Decorative bands of another tile size are bridged rather than
+counted tile by tile. Occluders SAM does not recognise get no hidden-area allowance.

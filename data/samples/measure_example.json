@@ -9,14 +9,14 @@
   },
   "status": "measured",
   "full_tiles": 41,
-  "partial_tiles_equiv": 17.52,
-  "tiled_area_m2": 2.686,
-  "sigma_random_m2": 0.044,
-  "sigma_system_m2": 0.03,
+  "partial_tiles_equiv": 20.33,
+  "tiled_area_m2": 2.815,
+  "sigma_random_m2": 0.272,
+  "sigma_system_m2": 0.031,
   "excluded": [
     {
       "label": "door",
-      "area_m2": 0.91,
+      "area_m2": 0.917,
       "reason": "opening"
     },
     {
@@ -26,7 +26,7 @@
     },
     {
       "label": "undetected",
-      "area_m2": 0.117,
+      "area_m2": 0.053,
       "reason": "not_visible"
     }
   ],

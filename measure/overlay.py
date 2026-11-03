@@ -273,7 +273,8 @@ def _dashed(draw, points, color, dash=8.0):
 
 
 def _caption_lines(wall_id, fit, area, tile):
-    interval = 2 * float(np.hypot(area.sigma_random_m2, area.sigma_system_m2))
+    # The bound agent/compare.py applies to one wall: 2 x (random + systematic).
+    interval = 2 * float(area.sigma_random_m2 + area.sigma_system_m2)
     if tile is not None:
         size = f"{tile.width_mm:g} × {tile.height_mm:g} mm"
     else:

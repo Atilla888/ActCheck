@@ -9,7 +9,6 @@ tiled area, which is what one photo can show; billing truth also includes hidden
 import argparse
 import csv
 import json
-import math
 from pathlib import Path
 
 import numpy as np
@@ -18,7 +17,13 @@ from PIL import Image
 from measure.sam_client import ROOT, Segmentation
 from measure.wall import measure_wall
 from schemas.measure import TileSpec
-from validation.synthetic import SyntheticWall, fake_concept, fake_detections, render_wall
+from validation.synthetic import (
+    SyntheticWall,
+    extra_plane,
+    fake_concept,
+    fake_detections,
+    render_wall,
+)
 
 OUT = ROOT / "outputs/synthetic_eval"
 KIND = {"masks": "synthetic-masks", "sam": "synthetic-sam"}
@@ -78,6 +83,11 @@ def random_walls(n, seed=0):
     return walls
 
 
+def neighbour(wall):
+    """A tiled neighbouring plane for one wall in four of the masks sweep."""
+    return ("side", "floor", None, None)[wall.seed % 4]
+
+
 def _mask_segmenter(render):
     """SAM-like masks of moderate difficulty, fixed per wall seed; concepts from geometry."""
     rng = np.random.default_rng(render.wall.seed)
@@ -89,6 +99,17 @@ def _mask_segmenter(render):
         merge_rate=float(rng.uniform(0, 0.05)),
         false_positives=int(rng.integers(0, 9)),
     )
+    kind = neighbour(render.wall)
+    if kind:
+        # A tiled neighbouring wall or floor in the frame, and SAM sees its tiles too (no floor
+        # mask): none of it may count.
+        side = "left" if rng.random() < 0.5 else "right"
+        try:
+            tiles += extra_plane(
+                render, kind, float(rng.uniform(300, 1500)), side=side, seed=render.wall.seed
+            )[0]
+        except ValueError:  # the camera cannot see that plane from inside the room
+            pass
 
     def segment(image, concepts):
         found = {concept: [] for concept in concepts}
@@ -127,7 +148,8 @@ def sweep(walls, mode, *, out_dir=OUT, measure=measure_wall):
 
 def _row(wall, wall_id, render, result, kind):
     measured = result.tiled_area_m2
-    sigma = None if measured is None else math.hypot(result.sigma_random_m2, result.sigma_system_m2)
+    # One wall's bound in agent/compare.py adds random and systematic sigma linearly.
+    sigma = None if measured is None else result.sigma_random_m2 + result.sigma_system_m2
     visible = render.visible_tiled_area_m2
     error = None if measured is None else measured - visible
     return {
@@ -149,6 +171,7 @@ def _row(wall, wall_id, render, result, kind):
         "gloss": wall.gloss,
         "door": wall.door is not None,
         "occluder": wall.occluder_h_mm > 0,
+        "neighbour": (neighbour(wall) or "") if kind == KIND["masks"] else "",
         "overlay": result.overlay_png,
     }
 
