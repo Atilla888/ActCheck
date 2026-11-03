@@ -228,3 +228,50 @@ def test_mask_over_whole_wall_is_not_measured_zero(tmp_path):
     assert result.status == "partial"
     assert "exclusion_overlaps_tiles" in result.warnings
     assert result.tiled_area_m2 == pytest.approx(render.tiled_area_m2, rel=0.01)
+
+
+def central_segmenter(render, keep):
+    """SAM saw only part of the wall: masks for tiles whose (i, j) passes keep()."""
+    size = (render.image.shape[1], render.image.shape[0])
+    tiles = [
+        d
+        for d in fake_detections(render, seed=render.wall.seed)
+        if d["truth"] and keep(d["truth"]["i"], d["truth"]["j"])
+    ]
+
+    def segment(image, concepts):
+        return Segmentation(source_size=size, tiles=tiles, concepts={c: [] for c in concepts})
+
+    return segment
+
+
+def test_missed_outer_tiles_are_partial(tmp_path):
+    path, render = photo(tmp_path, "w13", yaw_deg=10, seed=54)  # 12 x 11 tiles, all in frame
+    segmenter = central_segmenter(render, lambda i, j: 2 <= i <= 9 and 2 <= j <= 8)
+    result = measure.measure_wall(str(path), TILE, "w13", output_dir=tmp_path, segmenter=segmenter)
+    assert result.status == "partial"
+    assert "uncounted_tiles" in result.warnings
+
+
+def test_out_of_frame_with_missed_border_tiles_is_partial(tmp_path):
+    path, render = photo(tmp_path, "w14", fill=1.3, seed=55)
+    size = (render.image.shape[1], render.image.shape[0])
+    tiles = [
+        d for d in fake_detections(render, seed=55) if d["truth"] and not d["edge_truncated"]
+    ]
+
+    def segmenter(image, concepts):
+        return Segmentation(source_size=size, tiles=tiles, concepts={c: [] for c in concepts})
+
+    result = measure.measure_wall(str(path), TILE, "w14", output_dir=tmp_path, segmenter=segmenter)
+    assert result.status == "partial"
+    assert "wall_out_of_frame" in result.warnings or "uncounted_tiles" in result.warnings
+
+
+@pytest.mark.parametrize("seed", [56, 57, 58])
+def test_clean_wall_stays_measured(tmp_path, seed):
+    path, render = photo(tmp_path, f"w{seed}", yaw_deg=12, gloss=0.4, seed=seed)
+    result = measure.measure_wall(
+        str(path), TILE, "w", output_dir=tmp_path, segmenter=fake_segmenter(render)
+    )
+    assert result.status == "measured", result.warnings

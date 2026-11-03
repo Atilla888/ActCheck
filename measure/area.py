@@ -13,6 +13,7 @@ import cv2
 import numpy as np
 from scipy import ndimage
 
+from measure.probe import uncounted_tiles
 from schemas.measure import ExcludedRegion
 
 OPENING_CONCEPTS = {"door", "window"}
@@ -25,9 +26,9 @@ IMAGE_SIDE = 2000  # detections are rasterised at this long side
 REACH_MARGIN_MM = 3000  # how far beyond the matched cells tiles and exclusions are considered
 EDGE_PX = 1.0  # mask boundary localisation in image pixels
 BOOTSTRAP = 64
-EDGE_SLOPE = 0.04  # rectified tile edges this far from axis-parallel come from another plane
-EDGE_NOISE_PX = 2.5  # edge drift along a side that mask noise alone can produce
-MIN_CORNER_PIECE = 0.2  # of the tile, per axis, for a corner-cut piece meeting two joint lines
+THICKNESS_CHANGE = 0.06  # across a rectified tile; more means it narrows towards another plane
+EDGE_NOISE_PX = 5.0  # thickness change that mask noise and pixel steps alone can produce
+JOINT_TOLERANCE = 0.08  # of the tile's size along that axis
 RECTANGULARITY_MIN = 0.75
 ANGLE_TOLERANCE_DEG = 10
 GAP_CELLS = 1.6  # missed tiles bridged along rows and columns; doors are wider
@@ -54,13 +55,16 @@ class AreaResult:
     completed_px: list[np.ndarray] = field(default_factory=list)
     partial_ids: list[str] = field(default_factory=list)
     conflict_ids: list[str] = field(default_factory=list)  # matched tiles under an exclusion
+    uncounted_cells: int = 0  # ring cells that look like tiles in the photo but were not counted
+    probed_cells: int = 0
+    border_gap_tiles: float | None = None  # counted outline's distance from the photo edge
 
     @property
     def conflict_tiles(self):
         return len(self.conflict_ids)
 
 
-def measure_area(fit, detections, image_size, tile, concepts=None, *, seed=0):
+def measure_area(fit, detections, image_size, tile, concepts=None, *, seed=0, image=None):
     concepts = concepts or {}
     px, py = fit.pitch
     cell_area = px * py
@@ -133,6 +137,19 @@ def measure_area(fit, detections, image_size, tile, concepts=None, *, seed=0):
     full = len(fit.tiles)
     area_mm2 = region.sum() * plane.res**2 + correction
     excluded, excluded_px, undetected_m2 = _exclusions(region, undetected, masks, plane)
+    uncounted, probed = (
+        uncounted_tiles(image, fit, plane, region, blocked) if image is not None else (0, 0)
+    )
+    region_px = plane.outlines(region)
+    points = np.concatenate(region_px) if region_px else np.zeros((0, 2))
+    points = points[np.isfinite(points).all(axis=1)]
+    border_gap = None
+    if len(points):
+        width, height = image_size
+        gaps = np.minimum.reduce(
+            [points[:, 0], points[:, 1], width - points[:, 0], height - points[:, 1]]
+        )
+        border_gap = float(gaps.min() / max(fit.tile_px, 1e-9))
     border = region & ~cv2.erode(region.astype(np.uint8), np.ones((3, 3), np.uint8)).astype(bool)
     inner = cv2.erode(plane.frame.astype(np.uint8), np.ones((5, 5), np.uint8)).astype(bool)
     border_fraction = float((border & ~inner).sum() / max(1, border.sum()))
@@ -152,7 +169,10 @@ def measure_area(fit, detections, image_size, tile, concepts=None, *, seed=0):
         sigma_system_m2=area_m2 * (delta / px + delta / py),
         excluded=excluded,
         excluded_px=excluded_px,
-        region_px=plane.outlines(region),
+        region_px=region_px,
+        uncounted_cells=uncounted,
+        probed_cells=probed,
+        border_gap_tiles=border_gap,
         completed_px=plane.outlines(completed),
         partial_ids=partial_ids,
         conflict_ids=sorted(conflict_ids),
@@ -325,25 +345,28 @@ def _accept(fit, detections, labels, cells, plane, blocked, erosion=0.0, exclusi
 
 
 def _square_edged(part, pixels):
-    """A filled, axis-aligned rectangle in the plane: not a trapezoid from another plane."""
+    """A filled, axis-aligned rectangle in the plane: not a trapezoid from another plane.
+
+    A tile of a neighbouring wall or the floor, rectified with this wall's homography, narrows
+    towards its vanishing point: its thickness changes across it by about tile width over
+    vanishing distance (~10 % for a 300 mm tile), even near eye level where its edges look flat.
+    """
     points = np.column_stack(np.nonzero(part)[::-1]).astype(np.float32)
     (_, _), (w, h), angle = cv2.minAreaRect(points)
     if pixels / max(1.0, (w + 1) * (h + 1)) < RECTANGULARITY_MIN:
         return False
     if min(angle % 90, 90 - angle % 90) > ANGLE_TOLERANCE_DEG:
         return False
-    for mask in (part, part.T):  # top/bottom edges, then left/right edges
+    for mask in (part, part.T):  # thickness across columns, then across rows
         columns = np.flatnonzero(mask.any(axis=0))
         if len(columns) < 8:
             continue
         inner = columns[int(0.15 * len(columns)) : int(0.85 * len(columns)) + 1]
-        first = mask[:, inner].argmax(axis=0)
-        last = mask.shape[0] - 1 - mask[::-1, inner].argmax(axis=0)
-        span = inner[-1] - inner[0] + 1
-        for edge in (first, last):
-            # Over a short side, one pixel of mask noise is a steep slope: judge the drift.
-            if abs(np.polyfit(inner, edge, 1)[0]) * span > max(EDGE_NOISE_PX, EDGE_SLOPE * span):
-                return False
+        thickness = mask[:, inner].sum(axis=0).astype(np.float64)
+        typical = float(np.median(thickness))
+        change = abs(np.polyfit(inner, thickness, 1)[0]) * (columns[-1] - columns[0] + 1)
+        if change > max(EDGE_NOISE_PX, THICKNESS_CHANGE * typical):
+            return False
     return True
 
 
@@ -362,30 +385,44 @@ def _joint_level(fit, box, part, plane, erosion):
     y1 = plane.lo[1] + (box[0].start + rows.max() + 1) * plane.res
     if x1 - x0 > 1.1 * px or y1 - y0 > 1.1 * py:
         return 0
-    tolerance = max(3 * plane.res, 0.06 * min(cw, ch))
+    # Per axis: the lattice is extrapolated beyond the matched tiles, so a long tile's ends can
+    # sit a few percent of its length off the joint.
+    tolerance_x = max(3 * plane.res, JOINT_TOLERANCE * cw)
+    tolerance_y = max(3 * plane.res, JOINT_TOLERANCE * ch)
     j = round((y0 + y1) / 2 / py)
     band = (
-        abs(y0 - (j * py - ch / 2 + erosion)) <= tolerance,
-        abs(y1 - (j * py + ch / 2 - erosion)) <= tolerance,
+        abs(y0 - (j * py - ch / 2 + erosion)) <= tolerance_y,
+        abs(y1 - (j * py + ch / 2 - erosion)) <= tolerance_y,
     )
     across = (False, False)
     for offset in _row_offsets(fit, j):
         left = (x0 - erosion + cw / 2 - offset) / px
         right = (x1 + erosion - cw / 2 - offset) / px
         aligned = (
-            abs(left - round(left)) * px <= tolerance,
-            abs(right - round(right)) * px <= tolerance,
+            abs(left - round(left)) * px <= tolerance_x,
+            abs(right - round(right)) * px <= tolerance_x,
         )
         across = tuple(a or b for a, b in zip(across, aligned, strict=True))
     # Lattice rows run along plane x; the wall's horizontal joints are lines of constant plane
     # y when plane y runs up the wall, otherwise lines of constant plane x.
-    horizontal, vertical = (band, across) if plane.vertical_axis == 1 else (across, band)
+    if plane.vertical_axis == 1:
+        horizontal, vertical, low, high, axis = band, across, y0, y1, 1
+    else:
+        horizontal, vertical, low, high, axis = across, band, x0, x1, 0
     if all(horizontal):
         return 2 if any(vertical) else 1
-    # A corner cut is a real piece of tile; a sliver meeting two joint lines by chance (the first
-    # floor row seen edge-on at the junction) is not.
-    piece = min((x1 - x0) / cw, (y1 - y0) / ch) >= MIN_CORNER_PIECE
-    return 1 if any(horizontal) and any(vertical) and piece else 0
+    if not (any(horizontal) and any(vertical)):
+        return 0
+    # A cut row beyond the matched rows shares its joint with them: the aligned edge faces the
+    # lattice. A floor sliver at the junction meets a joint line, if at all, on its far side.
+    rects = np.array([fit.cell_rect(t.i, t.j) for t in fit.tiles])
+    first, last = rects[:, axis].min(), rects[:, axis + 2].max()
+    slack = 0.25 * fit.pitch[axis]
+    if high <= first + slack:
+        return 1 if horizontal[1] else 0
+    if low >= last - slack:
+        return 1 if horizontal[0] else 0
+    return 1
 
 
 def _extend_to_neighbours(region, allowed, fit, plane):

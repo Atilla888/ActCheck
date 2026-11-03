@@ -40,6 +40,8 @@ HIGH_RESIDUAL = 0.08  # loosely fitted: lens distortion, uneven wall or mixed pl
 OUT_OF_FRAME = 0.02  # share of the counted outline lying on the photo border
 UNDETECTED_SHARE = 0.05  # unrecognised wall area relative to the counted area
 ROOM_WORKERS = 4  # walls measured at once; each already sends 6 SAM requests in parallel
+BORDER_GAP = 0.5  # tiles: a counted outline this close to the photo edge may continue beyond it
+UNCOUNTED_SHARE = 0.2  # of probed ring cells that look like tiles SAM missed
 CONFLICT_SHARE = 0.1  # matched tiles under a door/window/mirror mask: the masks are unreliable
 PARTIAL_WARNINGS = {
     "wall_out_of_frame",
@@ -47,6 +49,7 @@ PARTIAL_WARNINGS = {
     "high_residual",
     "exclusion_overlaps_tiles",
     "exclusions_unavailable",  # no hidden-area allowance, and compare.py ignores warnings
+    "uncounted_tiles",
 }
 
 Segmenter = Callable[[Image.Image, Sequence[str]], sam_client.Segmentation]
@@ -123,7 +126,12 @@ def analyze_wall(
         if fit.residual_px > MAX_RESIDUAL * fit.tile_px:
             return unavailable(["lattice_fit_failed"])
         area = measure_area(
-            fit, segmentation.tiles, segmentation.source_size, tile, segmentation.concepts
+            fit,
+            segmentation.tiles,
+            segmentation.source_size,
+            tile,
+            segmentation.concepts,
+            image=image,
         )
         if area.tiled_area_m2 <= 0:
             return unavailable(warnings + ["lattice_fit_failed"])
@@ -131,8 +139,11 @@ def analyze_wall(
             warnings.append("merged_tiles")
         if area.conflict_tiles > CONFLICT_SHARE * len(fit.tiles):
             warnings.append("exclusion_overlaps_tiles")
-        if area.border_fraction > OUT_OF_FRAME:
+        near_edge = area.border_gap_tiles is not None and area.border_gap_tiles < BORDER_GAP
+        if area.border_fraction > OUT_OF_FRAME or near_edge:
             warnings.append("wall_out_of_frame")
+        if area.uncounted_cells >= max(2, UNCOUNTED_SHARE * area.probed_cells):
+            warnings.append("uncounted_tiles")
         if area.undetected_m2 > UNDETECTED_SHARE * area.tiled_area_m2:
             warnings.append("undetected_area")
         if fit.residual_px > HIGH_RESIDUAL * fit.tile_px:

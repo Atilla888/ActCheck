@@ -42,6 +42,7 @@ WARNING_TEXT = {
     "lattice_fit_failed": "the recognised tiles do not form one consistent grid",
     "exclusions_unavailable": "doors, mirrors and bathtubs could not be checked",
     "exclusion_overlaps_tiles": "a door, window or mirror was detected over visible tiles",
+    "uncounted_tiles": "tiles seem to continue beyond the counted area",
 }
 
 
