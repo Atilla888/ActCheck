@@ -186,7 +186,7 @@ function ReportContent({
           <h2>{t("Inspection status")}</h2>
           <p>
             {t(
-              "Evidence is staged locally. Live analysis is not connected. No measurements, discrepancies, or amounts to clarify have been established."
+              "The analysis has not been run yet. No measurements, discrepancies, or amounts to clarify have been established."
             )}
           </p>
           <h2>{t("Evidence manifest")}</h2>

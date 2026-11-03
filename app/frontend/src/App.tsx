@@ -343,7 +343,7 @@ function App() {
       files: item.files.filter((file) => file.id !== id),
     }))
   }
-  async function addFiles(incoming: File[]) {
+  async function addFiles(incoming: File[], role: "act" | "wall") {
     const accepted: LocalFile[] = []
     for (const file of incoming) {
       if (project.files.length + accepted.length >= 12) {
@@ -389,7 +389,13 @@ function App() {
           })
         else if (!(await file.slice(0, 5).text()).startsWith("%PDF-"))
           throw new Error("Unreadable PDF")
-        accepted.push({ id: crypto.randomUUID(), file, url, kind })
+        accepted.push({
+          id: crypto.randomUUID(),
+          file,
+          url,
+          kind,
+          role: kind === "document" ? "act" : role,
+        })
         urls.current.add(url)
       } catch {
         URL.revokeObjectURL(url)
