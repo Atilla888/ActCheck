@@ -13,10 +13,12 @@ import {
   FolderOpen,
   Grid2X2,
   Info,
+  Loader2,
   MessageSquareText,
   Moon,
   Plus,
   Ruler,
+  ScanLine,
   Sun,
   Upload,
 } from "lucide-react"
@@ -51,11 +53,20 @@ import {
   UploadDialog,
 } from "@/features/inspection/project-dialogs"
 import { ReportDialog } from "@/features/inspection/report"
+import { MeasuredWalls } from "@/features/inspection/measured"
 import {
   exampleProject,
   type LocalFile,
   type Project,
 } from "@/features/inspection/data"
+import {
+  fetchSample,
+  getInspection,
+  startInspection,
+  statementRows,
+  type InspectionView,
+  type JobStatus,
+} from "@/features/inspection/api"
 
 type Section = "evidence" | "review" | "report"
 function Notes({
@@ -121,6 +132,82 @@ function Notes({
   )
 }
 
+const stepLabels: Record<JobStatus, string> = {
+  queued: "Waiting to start…",
+  parsing: "Reading the statement…",
+  measuring: "Measuring the walls (about a minute per wall)…",
+  counting: "Counting installed items…",
+  protocol: "Writing the comparison…",
+  done: "Analysis complete",
+  failed: "Analysis failed",
+}
+
+function AnalysisPanel({
+  project,
+  onRun,
+  onOpen,
+}: {
+  project: Project
+  onRun: () => void
+  onOpen: () => void
+}) {
+  const { t } = useI18n()
+  const role = (item: LocalFile) =>
+    item.role ?? (item.kind === "document" ? "act" : "wall")
+  const acts = project.files.filter((item) => role(item) === "act").length
+  const walls = project.files.length - acts
+  const status = project.job?.status
+  const running = status !== undefined && !["done", "failed"].includes(status)
+  return (
+    <Alert className="availability-notice" aria-live="polite">
+      {running ? <Loader2 className="spin" /> : <ScanLine />}
+      <AlertTitle>
+        {status ? t(stepLabels[status]) : t("Ready to analyse")}
+      </AlertTitle>
+      <AlertDescription>
+        <p>
+          {t("Statement pages: {acts} · wall photos: {walls}", {
+            acts,
+            walls,
+          })}
+        </p>
+        {status === "failed" && project.job?.error && (
+          <p className="form-error">{project.job.error}</p>
+        )}
+        {!acts && (
+          <p>
+            {project.files.length
+              ? t(
+                  "Mark the photo of the statement as “Statement page” in the list above."
+                )
+              : t("Add the work statement (photo or PDF) to start.")}
+          </p>
+        )}
+        {acts > 0 && !walls && (
+          <p>
+            {t(
+              "Without wall photos only the arithmetic is checked; quantities stay unverified."
+            )}
+          </p>
+        )}
+        <div className="analysis-actions">
+          <Button onClick={onRun} disabled={!acts || running}>
+            {status === "done" || status === "failed"
+              ? t("Run again")
+              : t("Run analysis")}
+          </Button>
+          {status === "done" && (
+            <Button variant="outline" onClick={onOpen}>
+              {t("Review quantities")}
+              <ArrowRight data-icon="inline-end" />
+            </Button>
+          )}
+        </div>
+      </AlertDescription>
+    </Alert>
+  )
+}
+
 function App() {
   const { t, number, locale, setLocale, theme, setTheme } = useI18n()
   const [projects, setProjects] = useState<Project[]>([exampleProject])
@@ -131,6 +218,7 @@ function App() {
   const [guideOpen, setGuideOpen] = useState(false)
   const [reportOpen, setReportOpen] = useState(false)
   const [preview, setPreview] = useState<LocalFile | null>(null)
+  const [sample, setSample] = useState<InspectionView | null>(null)
   const urls = useRef(new Set<string>())
   const headingRef = useRef<HTMLHeadingElement>(null)
   const hasMounted = useRef(false)
@@ -153,6 +241,79 @@ function App() {
   const project =
     projects.find((item) => item.id === activeId) ?? exampleProject
   const ownProjects = projects.filter((item) => !item.example)
+  // The worked example runs the real agent on a stored measurement when the API is up;
+  // otherwise the illustrative fixtures are shown.
+  const analysis = project.example ? sample : (project.analysis ?? null)
+  const sampleWall = project.example ? sample?.room?.walls[0] : undefined
+  const tileWidth = sampleWall?.tile.width_mm ?? project.tileWidth
+  const tileHeight = sampleWall?.tile.height_mm ?? project.tileHeight
+  useEffect(() => {
+    let live = true
+    fetchSample(locale)
+      .then((view) => live && setSample(view))
+      .catch(() => live && setSample(null))
+    return () => {
+      live = false
+    }
+  }, [locale])
+  const pending = projects.filter(
+    (item) => item.job && !["done", "failed"].includes(item.job.status)
+  )
+  const pendingKey = pending.map((item) => item.job?.id).join()
+  useEffect(() => {
+    if (!pendingKey) return
+    const timer = window.setInterval(() => {
+      for (const id of pendingKey.split(",")) {
+        getInspection(id)
+          .then((job) =>
+            setProjects((items) =>
+              items.map((item) =>
+                item.job?.id === job.id
+                  ? {
+                      ...item,
+                      job: { id: job.id, status: job.status, error: job.error },
+                      analysis: job.result ?? item.analysis,
+                    }
+                  : item
+              )
+            )
+          )
+          .catch(() => undefined)
+      }
+    }, 1500)
+    return () => window.clearInterval(timer)
+  }, [pendingKey])
+  async function runAnalysis() {
+    const target = project
+    try {
+      const job = await startInspection(target, locale)
+      setProjects((items) =>
+        items.map((item) =>
+          item.id === target.id
+            ? {
+                ...item,
+                analysis: null,
+                job: { id: job.id, status: job.status, error: null },
+              }
+            : item
+        )
+      )
+    } catch (error) {
+      toast.error(
+        t("Analysis could not start: {reason}", {
+          reason: error instanceof Error ? error.message : String(error),
+        })
+      )
+    }
+  }
+  function setRole(id: string, role: "act" | "wall") {
+    updateProject((item) => ({
+      ...item,
+      files: item.files.map((file) =>
+        file.id === id ? { ...file, role } : file
+      ),
+    }))
+  }
   useEffect(() => {
     const heldUrls = urls.current
     return () => heldUrls.forEach((url) => URL.revokeObjectURL(url))
@@ -265,7 +426,56 @@ function App() {
             </Button>
           )}
         </div>
-        {project.example ? (
+        {project.example && sample ? (
+          <div className="dossier-files">
+            <a
+              href={sample.act_pages[0] ?? undefined}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="dossier-file"
+            >
+              <FileText />
+              <span>
+                <strong>{t("Contractor statement")}</strong>
+                <small>
+                  {t("{count} line items · synthetic act", {
+                    count: number(sample.protocol.comparisons.length),
+                  })}
+                </small>
+              </span>
+              <span className="file-action">
+                JPG <ArrowUpRight size={16} />
+              </span>
+            </a>
+            <div className="dossier-file">
+              <Grid2X2 />
+              <span>
+                <strong>{t("Tile size")}</strong>
+                <small>
+                  {number(tileWidth)} × {number(tileHeight)} {t("mm")}
+                </small>
+              </span>
+            </div>
+            {sample.room?.walls.map((wall) => (
+              <a
+                key={wall.wall_id}
+                href={wall.overlay_png ?? undefined}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="dossier-file"
+              >
+                <Camera />
+                <span>
+                  <strong>{t("Room evidence")}</strong>
+                  <small>{t("Synthetic wall · measured by SAM 3.1")}</small>
+                </span>
+                <span className="file-action">
+                  JPG <ArrowUpRight size={16} />
+                </span>
+              </a>
+            ))}
+          </div>
+        ) : project.example ? (
           <div className="dossier-files">
             <a
               href="/test-data/sample-statement.pdf"
@@ -330,8 +540,7 @@ function App() {
                   <span>
                     <strong>{item.file.name}</strong>
                     <small>
-                      {number(item.file.size / 1024 / 1024, 2)}{" "}
-                      {t("MB · Not analysed")}
+                      {number(item.file.size / 1024 / 1024, 2)} {t("MB")}
                     </small>
                   </span>
                   <span className="file-action">
@@ -339,6 +548,25 @@ function App() {
                     <ArrowUpRight size={16} />
                   </span>
                 </button>
+                <NativeSelect
+                  aria-label={t("Role of {name}", { name: item.file.name })}
+                  value={
+                    item.role ?? (item.kind === "document" ? "act" : "wall")
+                  }
+                  onChange={(event) =>
+                    setRole(item.id, event.target.value as "act" | "wall")
+                  }
+                >
+                  <NativeSelectOption value="act">
+                    {t("Statement page")}
+                  </NativeSelectOption>
+                  <NativeSelectOption
+                    value="wall"
+                    disabled={item.kind === "document"}
+                  >
+                    {t("Wall photo")}
+                  </NativeSelectOption>
+                </NativeSelect>
                 <Button
                   variant="ghost"
                   size="sm"
@@ -584,8 +812,7 @@ function App() {
                 <dl className="inspection-reference">
                   <dt>{t("Reference tile")}</dt>
                   <dd>
-                    {number(project.tileWidth)} × {number(project.tileHeight)}{" "}
-                    {t("mm")}
+                    {number(tileWidth)} × {number(tileHeight)} {t("mm")}
                   </dd>
                 </dl>
               </div>
@@ -672,17 +899,11 @@ function App() {
                     </aside>
                   </div>
                   {!project.example && (
-                    <Alert className="availability-notice">
-                      <Info />
-                      <AlertTitle>
-                        {t("Automatic analysis is not available yet")}
-                      </AlertTitle>
-                      <AlertDescription>
-                        {t(
-                          "You can collect files and write notes. Measurements require the analysis service; uploading files does not produce results."
-                        )}
-                      </AlertDescription>
-                    </Alert>
+                    <AnalysisPanel
+                      project={project}
+                      onRun={runAnalysis}
+                      onOpen={() => goToSection("review")}
+                    />
                   )}
                   <div className="section-next">
                     <p>
@@ -696,10 +917,12 @@ function App() {
                     </p>
                     <Button
                       onClick={() =>
-                        goToSection(project.example ? "review" : "report")
+                        goToSection(
+                          project.example || analysis ? "review" : "report"
+                        )
                       }
                     >
-                      {project.example
+                      {project.example || analysis
                         ? t("Review quantities")
                         : t("Continue to notes")}
                       <ArrowRight data-icon="inline-end" />
@@ -707,7 +930,49 @@ function App() {
                   </div>
                 </TabsContent>
                 <TabsContent value="review">
-                  {project.example ? (
+                  {analysis ? (
+                    <>
+                      <div className="review-context">
+                        <div>
+                          <span className="section-kicker">
+                            {t("REVIEW THE STATEMENT")}
+                          </span>
+                          <h2>{t("Which quantities need a second look?")}</h2>
+                          <p>{analysis.protocol.summary}</p>
+                        </div>
+                        <div className="review-amount">
+                          <span>{t("Amount to clarify")}</span>
+                          <strong>
+                            {number(analysis.protocol.overbilling_min_total)}{" "}
+                            <small>₸</small>
+                          </strong>
+                          <p>{t("At least · using the upper area bound")}</p>
+                        </div>
+                      </div>
+                      <StatementReview
+                        lines={statementRows(analysis)}
+                        footnote={
+                          analysis.sample
+                            ? "Synthetic act · stored measurement of a synthetic wall · KZT"
+                            : "Measured from your photos · KZT"
+                        }
+                      />
+                      {analysis.room && analysis.room.walls.length > 0 && (
+                        <MeasuredWalls walls={analysis.room.walls} />
+                      )}
+                      <div className="section-next">
+                        <p>
+                          {t(
+                            "Keep the questions that matter, then prepare your report."
+                          )}
+                        </p>
+                        <Button onClick={() => goToSection("report")}>
+                          {t("Notes & report")}
+                          <ArrowRight data-icon="inline-end" />
+                        </Button>
+                      </div>
+                    </>
+                  ) : project.example ? (
                     <>
                       <div className="review-context">
                         <div>
@@ -763,7 +1028,7 @@ function App() {
                         <EmptyTitle>{t("No measurements yet")}</EmptyTitle>
                         <EmptyDescription>
                           {t(
-                            "Automatic analysis is not available yet. Your files have not been measured or compared with the statement."
+                            "Add the statement and wall photos, then run the analysis on the evidence step."
                           )}
                         </EmptyDescription>
                       </EmptyHeader>
@@ -796,9 +1061,9 @@ function App() {
                       </span>
                       <h2>{t("Your inspection report")}</h2>
                       <p>
-                        {project.example
+                        {project.example || analysis
                           ? t(
-                              "Includes sample quantities, contractor questions and your saved notes."
+                              "Includes quantities, contractor questions and your saved notes."
                             )
                           : t(
                               "Includes your file list and saved notes. No measured quantities are available yet."
@@ -840,6 +1105,7 @@ function App() {
           open={reportOpen}
           onOpenChange={setReportOpen}
           project={project}
+          analysis={analysis}
         />
         <Dialog
           open={preview !== null}

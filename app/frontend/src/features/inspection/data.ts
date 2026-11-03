@@ -1,4 +1,6 @@
-export type ReviewStatus = "review" | "matched" | "unverified"
+import type { InspectionView, JobStatus } from "./api"
+
+export type ReviewStatus = "review" | "matched" | "unverified" | "incomplete"
 export type StatementLine = {
   id: string
   name: string
@@ -10,6 +12,12 @@ export type StatementLine = {
   status: ReviewStatus
   explanation: string
   question: string
+  // Set for rows from the analysis service; their text is already localized.
+  live?: boolean
+  unit?: string
+  upper?: number | null
+  amount?: number | null
+  toClarify?: number | null
 }
 
 // Deliberate demo fixtures. These are not model predictions or validation results.
@@ -125,9 +133,11 @@ export const statusLabels: Record<ReviewStatus, string> = {
   review: "Needs review",
   matched: "Within range",
   unverified: "Not verifiable",
+  incomplete: "Needs more evidence",
 }
 
 export function conservativeDifference(line: StatementLine) {
+  if (line.live) return line.toClarify ?? null
   if (line.measured === null || line.uncertainty === null) return null
   return Math.max(
     0,
@@ -140,6 +150,7 @@ export type LocalFile = {
   file: File
   url: string
   kind: "photo" | "document"
+  role?: "act" | "wall" // default: PDFs are the act, photos are walls
 }
 export type Project = {
   id: string
@@ -150,6 +161,8 @@ export type Project = {
   example: boolean
   files: LocalFile[]
   notes: string
+  analysis?: InspectionView | null
+  job?: { id: string; status: JobStatus; error: string | null } | null
 }
 
 export const exampleProject: Project = {

@@ -18,8 +18,76 @@ import {
   statusLabels,
   type Project,
 } from "./data"
+import { statementRows, type InspectionView } from "./api"
 
-function ReportContent({ project }: { project: Project }) {
+function AnalysisReport({ analysis }: { analysis: InspectionView }) {
+  const { t, number, money } = useI18n()
+  const rows = statementRows(analysis)
+  const { protocol } = analysis
+  return (
+    <>
+      <h2>{t("Measurement summary")}</h2>
+      <p>{protocol.summary}</p>
+      <table>
+        <thead>
+          <tr>
+            <th>{t("Work item")}</th>
+            <th>{t("Statement")}</th>
+            <th>{t("Measured")}</th>
+            <th>{t("Review")}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.id}>
+              <td>
+                {row.id}. {row.name}
+              </td>
+              <td>
+                {number(row.claimed)} {row.unit}
+              </td>
+              <td>
+                {row.measured === null
+                  ? t("Not verified")
+                  : row.uncertainty === null
+                    ? `${number(row.measured)} ${row.unit}`
+                    : `${number(row.measured)} ± ${number(row.uncertainty)} ${row.unit}`}
+              </td>
+              <td>
+                {t(statusLabels[row.status])}
+                {row.toClarify ? ` · ${money(row.toClarify)} ${t("KZT")}` : ""}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {protocol.questions.length > 0 && (
+        <>
+          <h2>{t("Questions before payment")}</h2>
+          <ol>
+            {protocol.questions.map((question) => (
+              <li key={question}>{question}</li>
+            ))}
+          </ol>
+        </>
+      )}
+      <h2>{t("Limitations")}</h2>
+      <p>
+        {t(
+          "Areas are measured from photos using the stated tile size; a wrong tile size scales every area. Areas hidden behind a bathtub, mirror or furniture count in the contractor's favour. Concealed work is not verified by photos. Amounts to clarify are lower bounds for a conversation, not a payment recommendation."
+        )}
+      </p>
+    </>
+  )
+}
+
+function ReportContent({
+  project,
+  analysis,
+}: {
+  project: Project
+  analysis: InspectionView | null
+}) {
   const { t, number, money } = useI18n()
 
   return (
@@ -28,9 +96,13 @@ function ReportContent({ project }: { project: Project }) {
         ActCheck <span>{t("INSPECTION REPORT")}</span>
       </div>
       <div className="report-disclaimer">
-        {project.example
-          ? t("ILLUSTRATIVE EXAMPLE — NOT A VERIFIED MEASUREMENT")
-          : t("DRAFT — MEASUREMENTS NOT YET AVAILABLE")}
+        {analysis?.sample
+          ? t("SAMPLE — SYNTHETIC ACT AND SYNTHETIC WALL")
+          : analysis
+            ? t("MEASURED FROM PHOTOS — REVIEW WITH YOUR CONTRACTOR")
+            : project.example
+              ? t("ILLUSTRATIVE EXAMPLE — NOT A VERIFIED MEASUREMENT")
+              : t("DRAFT — MEASUREMENTS NOT YET AVAILABLE")}
       </div>
       <h1>{project.example ? t(project.name) : project.name}</h1>
       <p>
@@ -43,7 +115,9 @@ function ReportContent({ project }: { project: Project }) {
         {t("Tile reference:")} {number(project.tileWidth)} ×{" "}
         {number(project.tileHeight)} {t("mm")}
       </p>
-      {project.example ? (
+      {analysis ? (
+        <AnalysisReport analysis={analysis} />
+      ) : project.example ? (
         <>
           <h2>{t("Measurement summary")}</h2>
           <p>
@@ -152,10 +226,12 @@ export function ReportDialog({
   open,
   onOpenChange,
   project,
+  analysis,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   project: Project
+  analysis: InspectionView | null
 }) {
   const { t, locale } = useI18n()
 
@@ -190,7 +266,7 @@ export function ReportDialog({
             </DialogDescription>
           </DialogHeader>
           <div className="report-preview" ref={ref}>
-            <ReportContent project={project} />
+            <ReportContent project={project} analysis={analysis} />
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={download}>
@@ -207,7 +283,7 @@ export function ReportDialog({
       {open &&
         createPortal(
           <div className="print-report">
-            <ReportContent project={project} />
+            <ReportContent project={project} analysis={analysis} />
           </div>,
           document.body
         )}

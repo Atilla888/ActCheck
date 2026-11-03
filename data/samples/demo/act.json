@@ -1,0 +1,60 @@
+{
+  "doc_kind": "completion_act",
+  "language": "ru",
+  "currency": "KZT",
+  "lines": [
+    {
+      "line_no": 1,
+      "description_raw": "Демонтаж старой плитки",
+      "work_type": "demolition",
+      "unit": "m2",
+      "unit_raw": "м²",
+      "quantity": 4.5,
+      "unit_price": 1500,
+      "amount_stated": 6750.0
+    },
+    {
+      "line_no": 2,
+      "description_raw": "Гидроизоляция стен в зоне ванны",
+      "work_type": "waterproofing",
+      "unit": "m2",
+      "unit_raw": "м²",
+      "quantity": 3.0,
+      "unit_price": 3000,
+      "amount_stated": 9000.0
+    },
+    {
+      "line_no": 3,
+      "description_raw": "Облицовка стены плиткой 300×150",
+      "work_type": "tiling_wall",
+      "unit": "m2",
+      "unit_raw": "м²",
+      "quantity": 6.2,
+      "unit_price": 9500,
+      "amount_stated": 58900.0
+    },
+    {
+      "line_no": 4,
+      "description_raw": "Затирка швов",
+      "work_type": "other",
+      "unit": "m2",
+      "unit_raw": "м²",
+      "quantity": 6.2,
+      "unit_price": 800,
+      "amount_stated": 5960
+    },
+    {
+      "line_no": 5,
+      "description_raw": "Установка смесителя",
+      "work_type": "plumbing_fixture",
+      "unit": "pcs",
+      "unit_raw": "шт",
+      "quantity": 1,
+      "unit_price": 12000,
+      "amount_stated": 12000
+    }
+  ],
+  "total_stated": 92610.0,
+  "vat_stated": null,
+  "parser_notes": []
+}

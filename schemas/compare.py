@@ -21,13 +21,15 @@ class LineComparison(BaseModel):
     # conservative: (billed - measured_high) * unit_price; only set for over_billed
     overbilling_min: float | None = None
     evidence: list[str] = Field(default_factory=list)  # overlay paths
-    note: str = ""
+    note: str = ""  # technical, English
+    explanation: str = ""  # for the user, in the protocol language
+    question: str = ""  # to the contractor, in the protocol language; "" = none
 
 
 class Protocol(BaseModel):
     comparisons: list[LineComparison]
     arithmetic_issues: list[ArithmeticIssue]
-    verifiable_share: float  # share of the act's amount a camera could check, 0..1
+    verifiable_share: float  # share of the act's amount compared with a measurement, 0..1
     overbilling_min_total: float
     questions: list[str]  # polite questions to the contractor, user's language
     summary: str

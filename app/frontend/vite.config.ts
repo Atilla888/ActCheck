@@ -11,4 +11,8 @@ export default defineConfig({
       "@": resolve(import.meta.dirname, "./src"),
     },
   },
+  // `uv run uvicorn app.server.main:app` serves the API on :8000; ACTCHECK_API overrides it
+  server: {
+    proxy: { "/api": process.env.ACTCHECK_API ?? "http://127.0.0.1:8000" },
+  },
 })

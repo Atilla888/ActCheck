@@ -1957,3 +1957,30 @@
     min-height: 38px;
   }
 }
+[data-slot="badge"][data-status="incomplete"] {
+  color: var(--warning);
+  background: var(--card);
+  border-color: var(--warning-border);
+  border-style: dashed;
+}
+.analysis-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+.spin {
+  animation: spin 1s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.evidence-image .measured-overlay {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 70vh;
+  object-fit: contain;
+}

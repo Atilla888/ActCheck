@@ -1,0 +1,11 @@
+.env
+.env.*
+.venv
+**/node_modules
+**/dist
+data/private
+data/cache
+outputs
+bathroom_tiles_20
+**/__pycache__
+.git

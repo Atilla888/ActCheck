@@ -2,6 +2,7 @@ import { useI18n } from "@/lib/i18n"
 import { useState } from "react"
 import {
   ArrowRight,
+  Camera,
   Check,
   CircleDashed,
   CircleHelp,
@@ -42,7 +43,9 @@ export function StatusBadge({ status }: { status: ReviewStatus }) {
       ? Check
       : status === "review"
         ? CircleHelp
-        : CircleDashed
+        : status === "incomplete"
+          ? Camera
+          : CircleDashed
   return (
     <Badge variant="outline" data-status={status}>
       <Icon data-icon="inline-start" />
@@ -51,14 +54,24 @@ export function StatusBadge({ status }: { status: ReviewStatus }) {
   )
 }
 
-export function StatementReview() {
+export function StatementReview({
+  lines = statement,
+  footnote = "All quantities are illustrative · KZT",
+}: {
+  lines?: StatementLine[]
+  footnote?: string
+}) {
   const { t, number, money } = useI18n()
 
   const [onlyReview, setOnlyReview] = useState(false)
   const [selected, setSelected] = useState<StatementLine | null>(null)
   const rows = onlyReview
-    ? statement.filter((row) => row.status !== "matched")
-    : statement
+    ? lines.filter((row) => row.status !== "matched")
+    : lines
+  // Analysis rows arrive localized; fixture rows are catalog keys.
+  const text = (row: StatementLine, value: string) =>
+    row.live ? value : t(value)
+  const unit = (row: StatementLine) => row.unit ?? t("m²")
   async function copyQuestion(text: string) {
     try {
       await navigator.clipboard.writeText(text)
@@ -108,11 +121,14 @@ export function StatementReview() {
           {rows.map((line) => (
             <TableRow key={line.id}>
               <TableCell>
-                <strong>{t(line.name)}</strong>
-                <span className="cell-description">{t(line.detail)}</span>
+                <strong>{text(line, line.name)}</strong>
+                {!line.live && (
+                  <span className="cell-description">{t(line.detail)}</span>
+                )}
               </TableCell>
               <TableCell className="numeric">
-                {number(line.claimed)} <span className="unit">{t("m²")}</span>
+                {number(line.claimed)}{" "}
+                <span className="unit">{unit(line)}</span>
               </TableCell>
               <TableCell className="numeric">
                 {line.measured !== null ? (
@@ -121,7 +137,7 @@ export function StatementReview() {
                     <span className="table-uncertainty">
                       ± {number(line.uncertainty ?? 0)}
                     </span>{" "}
-                    <span className="unit">{t("m²")}</span>
+                    <span className="unit">{unit(line)}</span>
                   </>
                 ) : (
                   <span className="unavailable">{t("Not verified")}</span>
@@ -134,8 +150,9 @@ export function StatementReview() {
                       line.status === "review" ? "difference-value" : "subtle"
                     }
                   >
-                    +{number(line.claimed - line.measured)}{" "}
-                    <span className="unit">{t("m²")}</span>
+                    {line.claimed >= line.measured ? "+" : "−"}
+                    {number(Math.abs(line.claimed - line.measured))}{" "}
+                    <span className="unit">{unit(line)}</span>
                   </span>
                 ) : (
                   <span className="unavailable">—</span>
@@ -148,7 +165,7 @@ export function StatementReview() {
                 <Button
                   size="sm"
                   variant="outline"
-                  aria-label={`${t("Details")}: ${t(line.name)}`}
+                  aria-label={`${t("Details")}: ${text(line, line.name)}`}
                   onClick={() => setSelected(line)}
                 >
                   {t("Details")}
@@ -164,7 +181,7 @@ export function StatementReview() {
           <CircleDashed size={14} />
           {t("Hidden work requires supporting records.")}
         </span>
-        <span>{t("All quantities are illustrative · KZT")}</span>
+        <span>{t(footnote)}</span>
       </div>
       <Dialog
         open={selected !== null}
@@ -172,10 +189,12 @@ export function StatementReview() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{t(selected?.name ?? "")}</DialogTitle>
+            <DialogTitle>
+              {selected ? text(selected, selected.name) : ""}
+            </DialogTitle>
             <DialogDescription>
               {t("Statement line")} {selected?.id}{" "}
-              {t("· illustrative comparison")}
+              {selected?.live ? "" : t("· illustrative comparison")}
             </DialogDescription>
           </DialogHeader>
           {selected && (
@@ -183,29 +202,40 @@ export function StatementReview() {
               <StatusBadge status={selected.status} />
               <dl className="detail-list">
                 <div>
-                  <dt>{t("Statement area")}</dt>
+                  <dt>{t("Statement quantity")}</dt>
                   <dd>
-                    {number(selected.claimed)} {t("m²")}
+                    {number(selected.claimed)} {unit(selected)}
                   </dd>
                 </div>
                 <div>
-                  <dt>{t("Measured area")}</dt>
+                  <dt>{t("Measured")}</dt>
                   <dd>
                     {selected.measured === null
                       ? t("Not verified")
-                      : `${number(selected.measured)} ± ${number(selected.uncertainty ?? 0)} ${t("m²")}`}
+                      : selected.uncertainty === null
+                        ? `${number(selected.measured)} ${unit(selected)}`
+                        : `${number(selected.measured)} ± ${number(selected.uncertainty)} ${unit(selected)}`}
                   </dd>
                 </div>
+                {selected.upper != null && (
+                  <div>
+                    <dt>{t("Upper bound, hidden areas included")}</dt>
+                    <dd>
+                      {number(selected.upper)} {unit(selected)}
+                    </dd>
+                  </div>
+                )}
                 <div>
                   <dt>{t("Rate")}</dt>
                   <dd>
-                    {money(selected.rate)} {t("KZT / m²")}
+                    {money(selected.rate)} {t("KZT")} / {unit(selected)}
                   </dd>
                 </div>
                 <div>
                   <dt>{t("Statement amount")}</dt>
                   <dd>
-                    {money(selected.claimed * selected.rate)} {t("KZT")}
+                    {money(selected.amount ?? selected.claimed * selected.rate)}{" "}
+                    {t("KZT")}
                   </dd>
                 </div>
                 {selected.status === "review" && (
@@ -217,21 +247,27 @@ export function StatementReview() {
                   </div>
                 )}
               </dl>
-              <p>{t(selected.explanation)}</p>
-              <div className="question-block">
-                <MessageSquareText size={18} />
-                <div>
-                  <strong>{t("A question for your contractor")}</strong>
-                  <p>{t(selected.question)}</p>
-                </div>
-              </div>
-              <Button
-                variant="outline"
-                onClick={() => copyQuestion(t(selected.question))}
-              >
-                <Copy data-icon="inline-start" />
-                {t("Copy question")}
-              </Button>
+              <p>{text(selected, selected.explanation)}</p>
+              {selected.question && (
+                <>
+                  <div className="question-block">
+                    <MessageSquareText size={18} />
+                    <div>
+                      <strong>{t("A question for your contractor")}</strong>
+                      <p>{text(selected, selected.question)}</p>
+                    </div>
+                  </div>
+                  <Button
+                    variant="outline"
+                    onClick={() =>
+                      copyQuestion(text(selected, selected.question))
+                    }
+                  >
+                    <Copy data-icon="inline-start" />
+                    {t("Copy question")}
+                  </Button>
+                </>
+              )}
             </div>
           )}
         </DialogContent>
