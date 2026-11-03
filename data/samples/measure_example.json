@@ -9,19 +9,19 @@
   },
   "status": "measured",
   "full_tiles": 41,
-  "partial_tiles_equiv": 20.33,
-  "tiled_area_m2": 2.815,
-  "sigma_random_m2": 0.272,
+  "partial_tiles_equiv": 20.45,
+  "tiled_area_m2": 2.821,
+  "sigma_random_m2": 0.273,
   "sigma_system_m2": 0.031,
   "excluded": [
     {
       "label": "door",
-      "area_m2": 0.917,
+      "area_m2": 0.91,
       "reason": "opening"
     },
     {
       "label": "bathtub",
-      "area_m2": 1.211,
+      "area_m2": 1.209,
       "reason": "not_visible"
     },
     {
