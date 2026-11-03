@@ -1,0 +1,69 @@
+{
+ "doc_kind": "completion_act",
+ "language": "ru",
+ "lines": [
+  {
+   "line_no": 1,
+   "description_raw": "Демонтаж старой облицовки стен",
+   "work_type": "demolition",
+   "unit": "m2",
+   "unit_raw": "м2",
+   "quantity": 24.0,
+   "unit_price": 1200,
+   "amount_stated": 28800.0
+  },
+  {
+   "line_no": 2,
+   "description_raw": "Гидроизоляция пола обмазочная",
+   "work_type": "waterproofing",
+   "unit": "m2",
+   "unit_raw": "м2",
+   "quantity": 5.2,
+   "unit_price": 2800,
+   "amount_stated": 14560.0
+  },
+  {
+   "line_no": 3,
+   "description_raw": "Облицовка стен керамической плиткой 250×400",
+   "work_type": "tiling_wall",
+   "unit": "m2",
+   "unit_raw": "м2",
+   "quantity": 31.6,
+   "unit_price": 9000,
+   "amount_stated": 284400.0
+  },
+  {
+   "line_no": 4,
+   "description_raw": "Укладка керамогранита на пол 600×600",
+   "work_type": "tiling_floor",
+   "unit": "m2",
+   "unit_raw": "м2",
+   "quantity": 4.8,
+   "unit_price": 11000,
+   "amount_stated": 52800.0
+  },
+  {
+   "line_no": 5,
+   "description_raw": "Установка плинтуса",
+   "work_type": "skirting",
+   "unit": "m",
+   "unit_raw": "п.м.",
+   "quantity": 9.4,
+   "unit_price": 1500,
+   "amount_stated": 14100.0
+  },
+  {
+   "line_no": 6,
+   "description_raw": "Установка смесителя",
+   "work_type": "plumbing_fixture",
+   "unit": "pcs",
+   "unit_raw": "шт",
+   "quantity": 2,
+   "unit_price": 6000,
+   "amount_stated": 12000
+  }
+ ],
+ "total_stated": 406660.0,
+ "vat_stated": null,
+ "planted_errors": []
+}

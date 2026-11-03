@@ -10,7 +10,7 @@ import logging
 import mimetypes
 import re
 from pathlib import Path
-from typing import Literal, TypeVar
+from typing import Literal
 
 from openai import OpenAI
 from pydantic import BaseModel, ValidationError
@@ -20,7 +20,6 @@ from agent.config import get_settings
 log = logging.getLogger(__name__)
 
 Provider = Literal["baseten", "meta"]
-T = TypeVar("T", bound=BaseModel)
 
 
 class LLMError(RuntimeError):
@@ -60,7 +59,7 @@ def _extract_json(text: str) -> str:
     return text[start : end + 1]
 
 
-def complete_json(
+def complete_json[T: BaseModel](
     system: str,
     user_content: list[dict],
     model_cls: type[T],
@@ -89,7 +88,8 @@ def complete_json(
                 {"role": "assistant", "content": text},
                 {
                     "role": "user",
-                    "content": f"That reply was invalid: {err}\nReturn the corrected JSON object only.",
+                    "content": f"That reply was invalid: {err}\n"
+                    "Return the corrected JSON object only.",
                 },
             ]
     raise LLMError(f"{provider}: no valid {model_cls.__name__} after {max_repairs + 1} attempts")

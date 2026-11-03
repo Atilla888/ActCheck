@@ -15,8 +15,10 @@ Rules:
 - Copy quantity, unit price and amount exactly as printed. Never compute, correct or fill in a
   number. Decimal comma -> dot; drop thousands separators ("460 750,00" -> 460750.0).
   An unreadable or empty cell is null, with a note in `parser_notes`.
-- unit: м2, м², кв.м, ш.м² -> "m2"; м, п.м., м.п., пог.м -> "m"; шт, дана, точка, компл -> "pcs";
-  усл., работа, комплекс, "1 услуга" priced as a whole -> "lump_sum"; anything else -> "other".
+- unit: м2, м², кв.м, ш.м., ш.м² -> "m2"; м, п.м., м.п., пог.м -> "m"; шт, дана, точка,
+  and countable packages (меш., уп., рулон, ведро, канистра) -> "pcs"; усл., работа, компл. or
+  комплекс for a job priced as a whole -> "lump_sum" (компл. of a countable item, e.g. "смеситель,
+  компл." -> "pcs"); anything else -> "other".
   Put the printed unit text in `unit_raw`.
 - work_type: wall tiling (облицовка стен плиткой, укладка плитки на стены, қабырғаға плитка) ->
   "tiling_wall"; floor tiling (укладка плитки на пол, напольная плитка) -> "tiling_floor";
