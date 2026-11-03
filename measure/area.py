@@ -25,7 +25,9 @@ IMAGE_SIDE = 2000  # detections are rasterised at this long side
 REACH_MARGIN_MM = 3000  # how far beyond the matched cells tiles and exclusions are considered
 EDGE_PX = 1.0  # mask boundary localisation in image pixels
 BOOTSTRAP = 64
-MAX_ACCEPTED_CELLS = 4  # larger rectified masks are walls, mirrors or merged blobs
+EDGE_SLOPE = 0.04  # rectified tile edges this far from axis-parallel come from another plane
+EDGE_NOISE_PX = 2.5  # edge drift along a side that mask noise alone can produce
+MIN_CORNER_PIECE = 0.2  # of the tile, per axis, for a corner-cut piece meeting two joint lines
 RECTANGULARITY_MIN = 0.75
 ANGLE_TOLERANCE_DEG = 10
 GAP_CELLS = 1.6  # missed tiles bridged along rows and columns; doors are wider
@@ -51,7 +53,11 @@ class AreaResult:
     region_px: list[np.ndarray] = field(default_factory=list)  # outlines, source image px
     completed_px: list[np.ndarray] = field(default_factory=list)
     partial_ids: list[str] = field(default_factory=list)
-    blocked_ids: list[str] = field(default_factory=list)  # lattice tiles inside floor/door/...
+    conflict_ids: list[str] = field(default_factory=list)  # matched tiles under an exclusion
+
+    @property
+    def conflict_tiles(self):
+        return len(self.conflict_ids)
 
 
 def measure_area(fit, detections, image_size, tile, concepts=None, *, seed=0):
@@ -61,19 +67,46 @@ def measure_area(fit, detections, image_size, tile, concepts=None, *, seed=0):
     plane = _Plane(fit, image_size, concepts, detections)
     labels = plane.labels([d["contours"] for d in detections])
     erosion = _erosion_mm(fit, detections, labels, plane)
-    masks = {c: plane.mask(found) & plane.frame for c, found in concepts.items() if found}
+    cells = plane.cells(fit, fit.tiles)
+    # Quantisation of whole cells is corrected analytically before exclusions clip them.
+    correction = len(fit.tiles) * cell_area - cells.sum() * plane.res**2
+    # Matched tiles are seen. A detection lying mostly on them is not a door, mirror or floor
+    # there (a glass screen read as a door, a floor mask spilling up the wall): it is dropped.
+    masks, conflict_ids = {}, set()
+    for concept, found in concepts.items():
+        union = np.zeros(plane.shape, bool)
+        for detection in found:
+            mask = plane.mask([detection]) & plane.frame
+            if not mask.any():
+                continue
+            if (mask & cells).sum() >= 0.5 * mask.sum():
+                if concept not in BLOCKING_ONLY:
+                    conflict_ids.update(plane.covered_tiles(fit, mask))
+                continue
+            union |= mask
+        if union.any():
+            masks[concept] = union
     blocked = np.zeros(plane.shape, bool)
-    for mask in masks.values():
+    exclusions = np.zeros(plane.shape, bool)
+    for concept, mask in masks.items():
         blocked |= mask
-    kept, blocked_ids = [], []
+        if concept not in BLOCKING_ONLY:
+            exclusions |= mask
+    # A kept mask still covering most of a matched cell is lifted there; covering less, an
+    # exclusion clips the cell (an L-shaped tile at a door corner). The floor never clips.
+    conflict_ids.update(plane.covered_tiles(fit, exclusions))
+    seen = np.zeros(plane.shape, bool)
     for tile_ in fit.tiles:
-        (blocked_ids if plane.blocked_at(fit, tile_, blocked) else kept).append(tile_)
-    cells = plane.cells(fit, kept)
-    # Quantisation of whole cells is corrected analytically before exclusions clip them
-    # (a tile cut around a door corner is an L, not a full cell).
-    correction = len(kept) * cell_area - cells.sum() * plane.res**2
-    cells &= ~blocked
-    accepted, partial_ids = _accept(fit, detections, labels, cells, plane, blocked, erosion)
+        box = plane.cell_box(fit, tile_)
+        if box is not None and blocked[box].mean() >= 0.5:
+            seen[box] = True
+    blocked &= ~seen
+    exclusions &= ~seen
+    masks = {c: m & ~seen for c, m in masks.items()}
+    cells &= ~exclusions
+    accepted, partial_ids = _accept(
+        fit, detections, labels, cells, plane, blocked, erosion, exclusions
+    )
     grow = max(0, int(round((erosion + tile.grout_mm / 2) / plane.res)))
     if grow:
         accepted = cv2.dilate(accepted.astype(np.uint8), np.ones((2 * grow + 1,) * 2, np.uint8))
@@ -97,7 +130,7 @@ def measure_area(fit, detections, image_size, tile, concepts=None, *, seed=0):
     undetected |= _hull_gaps(region, blocked | undetected, plane, cell_area)
     completed_cells = int(round(completed.sum() * plane.res**2 / cell_area))
     completed |= bridged | extended
-    full = len(kept)
+    full = len(fit.tiles)
     area_mm2 = region.sum() * plane.res**2 + correction
     excluded, excluded_px, undetected_m2 = _exclusions(region, undetected, masks, plane)
     border = region & ~cv2.erode(region.astype(np.uint8), np.ones((3, 3), np.uint8)).astype(bool)
@@ -122,7 +155,7 @@ def measure_area(fit, detections, image_size, tile, concepts=None, *, seed=0):
         region_px=plane.outlines(region),
         completed_px=plane.outlines(completed),
         partial_ids=partial_ids,
-        blocked_ids=[t.det_id for t in blocked_ids],
+        conflict_ids=sorted(conflict_ids),
     )
 
 
@@ -164,13 +197,18 @@ class _Plane:
             image, self.M, (self.shape[1], self.shape[0]), flags=cv2.INTER_NEAREST, borderValue=0
         )
 
-    def blocked_at(self, fit, tile, blocked):
-        """True when the tile's cell centre lies in a floor, door, mirror or similar mask."""
+    def covered_tiles(self, fit, mask):
+        """Ids of matched tiles whose cell lies at least half inside mask."""
+        boxes = ((tile.det_id, self.cell_box(fit, tile)) for tile in fit.tiles)
+        return [i for i, box in boxes if box is not None and mask[box].mean() >= 0.5]
+
+    def cell_box(self, fit, tile):
+        """Raster slices of tile (i, j)'s cell, or None when it lies outside the raster."""
         x0, y0, x1, y1 = fit.cell_rect(tile.i, tile.j)
-        col = int(round(((x0 + x1) / 2 - self.lo[0]) / self.res))
-        row = int(round(((y0 + y1) / 2 - self.lo[1]) / self.res))
-        inside = 0 <= row < self.shape[0] and 0 <= col < self.shape[1]
-        return bool(inside and blocked[row, col])
+        c0, c1 = (max(0, round((x - self.lo[0]) / self.res)) for x in (x0, x1))
+        r0, r1 = (max(0, round((y - self.lo[1]) / self.res)) for y in (y0, y1))
+        c1, r1 = min(c1, self.shape[1]), min(r1, self.shape[0])
+        return (slice(r0, r1), slice(c0, c1)) if r1 > r0 and c1 > c0 else None
 
     def cells(self, fit, tiles):
         mask = np.zeros(self.shape, bool)
@@ -233,17 +271,23 @@ def _erosion_mm(fit, detections, labels, plane):
     return float(np.clip(np.median(insets), 0, 0.05 * min(cw, ch)))
 
 
-def _accept(fit, detections, labels, cells, plane, blocked, erosion=0.0):
-    """Non-lattice masks that look like coplanar tiles: rectified, aligned and connected.
+def _accept(fit, detections, labels, cells, plane, blocked, erosion=0.0, exclusions=None):
+    """Non-lattice masks that are tiles of this wall: one tile or less, square-edged in the
+    plane and lying on this wall's joint lines.
 
-    Masks whose rectified edges lie on this wall's joint lines are accepted wherever they are;
-    from them and the matched cells, acceptance grows through neighbouring accepted tiles. So
-    a strip of cut tiles beyond a door counts even when every tile linking it was missed.
+    Tiles of a neighbouring wall or the floor rectify to trapezoids off the joint lines. Masks
+    on the joint lines of both axes count wherever they are; masks on one row band (cut tiles)
+    count when they connect to the matched cells through other accepted tiles, so a strip of
+    cut tiles beside a door counts.
     """
     px, py = fit.pitch
     reach = max(1, int(round(max(px, py) / plane.res)))
     kernel = np.ones((2 * reach + 1,) * 2, np.uint8)
     matched = {t.det_id for t in fit.tiles}
+    # Next to the matched cells only door/window/mirror masks block: a floor mask spilling up
+    # the wall must not remove the wall's cut bottom row.
+    beside = cv2.dilate(cells.astype(np.uint8), kernel) > 0
+    exclusions = blocked if exclusions is None else exclusions
     candidates = []
     for k, box in enumerate(ndimage.find_objects(labels), 1):
         detection = detections[k - 1] if k <= len(detections) else None
@@ -251,22 +295,18 @@ def _accept(fit, detections, labels, cells, plane, blocked, erosion=0.0):
             continue
         part = labels[box] == k
         pixels = int(part.sum())
-        if not 0.02 * px * py <= pixels * plane.res**2 <= MAX_ACCEPTED_CELLS * px * py:
+        if pixels * plane.res**2 < 0.02 * px * py:
             continue
-        if (part & blocked[box]).sum() >= 0.5 * pixels:
+        near = (part & beside[box]).sum() >= 0.5 * pixels
+        if (part & (exclusions if near else blocked)[box]).sum() >= 0.5 * pixels:
             continue  # floor, bathtub apron, door: tile-like but not this wall
-        points = np.column_stack(np.nonzero(part)[::-1]).astype(np.float32)
-        (_, _), (w, h), angle = cv2.minAreaRect(points)
-        if pixels / max(1.0, (w + 1) * (h + 1)) < RECTANGULARITY_MIN:
-            continue
-        if min(angle % 90, 90 - angle % 90) > ANGLE_TOLERANCE_DEG:
-            continue
-        candidates.append((detection["id"], box, part, pixels))
+        level = _joint_level(fit, box, part, plane, erosion)
+        if level and _square_edged(part, pixels):
+            candidates.append((detection["id"], box, part, pixels, level))
     accepted, ids = np.zeros(plane.shape, bool), []
     grown = cells.copy()
-    for candidate in candidates:
-        if _on_joint_lines(fit, candidate[1], candidate[2], plane, erosion):
-            detection_id, box, part, _ = candidate
+    for detection_id, box, part, _, level in candidates:
+        if level == 2:
             accepted[box] |= part
             grown[box] |= part
             ids.append(detection_id)
@@ -276,7 +316,7 @@ def _accept(fit, detections, labels, cells, plane, blocked, erosion=0.0):
         joined = [c for c in candidates if (c[2] & near[c[1]]).sum() >= 0.5 * c[3]]
         if not joined:
             break
-        for detection_id, box, part, _ in joined:
+        for detection_id, box, part, _, _ in joined:
             accepted[box] |= part
             grown[box] |= part
             ids.append(detection_id)
@@ -284,8 +324,36 @@ def _accept(fit, detections, labels, cells, plane, blocked, erosion=0.0):
     return accepted, ids
 
 
-def _on_joint_lines(fit, box, part, plane, erosion):
-    """True when a single-tile-sized mask spans one tile row, or meets a row and a column edge."""
+def _square_edged(part, pixels):
+    """A filled, axis-aligned rectangle in the plane: not a trapezoid from another plane."""
+    points = np.column_stack(np.nonzero(part)[::-1]).astype(np.float32)
+    (_, _), (w, h), angle = cv2.minAreaRect(points)
+    if pixels / max(1.0, (w + 1) * (h + 1)) < RECTANGULARITY_MIN:
+        return False
+    if min(angle % 90, 90 - angle % 90) > ANGLE_TOLERANCE_DEG:
+        return False
+    for mask in (part, part.T):  # top/bottom edges, then left/right edges
+        columns = np.flatnonzero(mask.any(axis=0))
+        if len(columns) < 8:
+            continue
+        inner = columns[int(0.15 * len(columns)) : int(0.85 * len(columns)) + 1]
+        first = mask[:, inner].argmax(axis=0)
+        last = mask.shape[0] - 1 - mask[::-1, inner].argmax(axis=0)
+        span = inner[-1] - inner[0] + 1
+        for edge in (first, last):
+            # Over a short side, one pixel of mask noise is a steep slope: judge the drift.
+            if abs(np.polyfit(inner, edge, 1)[0]) * span > max(EDGE_NOISE_PX, EDGE_SLOPE * span):
+                return False
+    return True
+
+
+def _joint_level(fit, box, part, plane, erosion):
+    """How a mask of at most one tile sits on this wall's joint lines, in the wall's directions.
+
+    2: a full tile row and a column edge (a whole or end-cut tile); 1: a full tile row (cut by a
+    door or corner) or a row edge plus a column edge (a corner cut); 0: anything else. A full
+    tile column alone is not enough: the floor and ceiling continue the wall's columns.
+    """
     (px, py), (cw, ch) = fit.pitch, fit.cell
     rows, cols = np.nonzero(part)
     x0 = plane.lo[0] + (box[1].start + cols.min()) * plane.res
@@ -293,19 +361,31 @@ def _on_joint_lines(fit, box, part, plane, erosion):
     y0 = plane.lo[1] + (box[0].start + rows.min()) * plane.res
     y1 = plane.lo[1] + (box[0].start + rows.max() + 1) * plane.res
     if x1 - x0 > 1.1 * px or y1 - y0 > 1.1 * py:
-        return False
+        return 0
     tolerance = max(3 * plane.res, 0.06 * min(cw, ch))
     j = round((y0 + y1) / 2 / py)
-    top = abs(y0 - (j * py - ch / 2 + erosion)) <= tolerance
-    bottom = abs(y1 - (j * py + ch / 2 - erosion)) <= tolerance
-    if top and bottom:
-        return True
-    offset = _row_offset(fit, j)
-    if offset is None or not (top or bottom):
-        return False
-    left = (x0 - erosion + cw / 2 - offset) / px
-    right = (x1 + erosion - cw / 2 - offset) / px
-    return min(abs(left - round(left)), abs(right - round(right))) * px <= tolerance
+    band = (
+        abs(y0 - (j * py - ch / 2 + erosion)) <= tolerance,
+        abs(y1 - (j * py + ch / 2 - erosion)) <= tolerance,
+    )
+    across = (False, False)
+    for offset in _row_offsets(fit, j):
+        left = (x0 - erosion + cw / 2 - offset) / px
+        right = (x1 + erosion - cw / 2 - offset) / px
+        aligned = (
+            abs(left - round(left)) * px <= tolerance,
+            abs(right - round(right)) * px <= tolerance,
+        )
+        across = tuple(a or b for a, b in zip(across, aligned, strict=True))
+    # Lattice rows run along plane x; the wall's horizontal joints are lines of constant plane
+    # y when plane y runs up the wall, otherwise lines of constant plane x.
+    horizontal, vertical = (band, across) if plane.vertical_axis == 1 else (across, band)
+    if all(horizontal):
+        return 2 if any(vertical) else 1
+    # A corner cut is a real piece of tile; a sliver meeting two joint lines by chance (the first
+    # floor row seen edge-on at the junction) is not.
+    piece = min((x1 - x0) / cw, (y1 - y0) / ch) >= MIN_CORNER_PIECE
+    return 1 if any(horizontal) and any(vertical) and piece else 0
 
 
 def _extend_to_neighbours(region, allowed, fit, plane):
@@ -381,19 +461,20 @@ def _hull_gaps(region, explained, plane, cell_area):
     return opened.astype(bool)
 
 
-def _row_offset(fit, j):
-    """Offset of row j, or of matched rows with the same parity (stack and running bond)."""
-    if j in fit.row_offsets:
-        return fit.row_offsets[j]
+def _row_offsets(fit, j):
+    """Candidate column offsets for row j: its own, and the one rows of its parity agree on.
+
+    A row holding only a few matched tiles (beside a door) can carry a poor offset of its own.
+    """
     px = fit.pitch[0]
+    candidates = [fit.row_offsets[j]] if j in fit.row_offsets else []
     same = [o for row, o in fit.row_offsets.items() if row % 2 == j % 2]
-    if not same:
-        return None
-    angles = 2 * np.pi * np.asarray(same) / px
-    spread = np.hypot(np.sin(angles).mean(), np.cos(angles).mean())
-    if spread < 0.95:  # irregular offsets: no pattern to extend
-        return None
-    return float(np.arctan2(np.sin(angles).mean(), np.cos(angles).mean()) / (2 * np.pi) * px % px)
+    if same:
+        angles = 2 * np.pi * np.asarray(same) / px
+        if np.hypot(np.sin(angles).mean(), np.cos(angles).mean()) >= 0.95:  # a regular bond
+            mean = np.arctan2(np.sin(angles).mean(), np.cos(angles).mean())
+            candidates.append(float(mean / (2 * np.pi) * px % px))
+    return candidates
 
 
 def _close_gaps(region, fit, plane):

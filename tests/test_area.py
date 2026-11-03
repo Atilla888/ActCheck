@@ -9,7 +9,13 @@ import pytest
 from measure.area import GROUT_TOLERANCE_MM, measure_area, tile_tolerance_mm
 from measure.lattice import fit_lattice
 from schemas.measure import TileSpec
-from validation.synthetic import SyntheticWall, fake_concept, fake_detections, render_wall
+from validation.synthetic import (
+    SyntheticWall,
+    extra_plane,
+    fake_concept,
+    fake_detections,
+    render_wall,
+)
 
 
 def spec(wall, source="box_label"):
@@ -124,25 +130,42 @@ def test_strip_beside_door_and_row_gaps_are_counted():
     assert area.tiled_area_m2 == pytest.approx(render.visible_tiled_area_m2, rel=0.03)
 
 
-def test_floor_masks_block_acceptance():
-    wall = SyntheticWall(tile_w_mm=150, tile_h_mm=150, fill=0.6, seed=18)
+def test_floor_mask_blocks_tiles_of_a_real_floor():
+    wall = SyntheticWall(tile_w_mm=150, tile_h_mm=150, pitch_deg=-10, fill=0.65, seed=18)
     render = render_wall(wall)
     size = (render.image.shape[1], render.image.shape[0])
-    detections = fake_detections(render, seed=18)
-    # Floor tiles continue below the wall; in the image they look like more aligned tiles.
-    h = wall.wall_h_mm
-    floor = []
-    for k, x in enumerate(range(0, 2400, 152)):
-        for row, y in enumerate((h + 2, h + 154)):
-            rect = np.array([[x, y], [x + 150, y], [x + 150, y + 150], [x, y + 150]], float)
-            polygon = cv2.perspectiveTransform(rect[None], render.plane_to_image)[0]
-            floor.append({**fake_concept(polygon, "tile", size), "id": f"floor:{k}:{row}"})
-    band = np.array([[0, h], [2400, h], [2400, h + 400], [0, h + 400]], float)
-    floor_mask = cv2.perspectiveTransform(band[None], render.plane_to_image)[0]
-    concepts = {"floor": [fake_concept(floor_mask, "floor", size)]}
-    _, area = run(wall, detections=detections + floor, concepts=concepts)
-    assert area.tiled_area_m2 == pytest.approx(render.tiled_area_m2, rel=0.01)
+    floor, outline = extra_plane(render, "floor", 1500, seed=18)
+    concepts = {"floor": [fake_concept(outline, "floor", size)]}
+    detections = fake_detections(render, seed=18) + floor
+    _, area = run(wall, detections=detections, concepts=concepts)
+    assert area.tiled_area_m2 == pytest.approx(render.tiled_area_m2, rel=0.02)
+    assert not any(i.startswith("floor") for i in area.partial_ids)
     assert all(region.label != "floor" for region in area.excluded)
+
+
+def wall_block(render, x0, y0, x1, y1, label):
+    size = (render.image.shape[1], render.image.shape[0])
+    polygon = cv2.perspectiveTransform(
+        np.array([[[x0, y0], [x1, y0], [x1, y1], [x0, y1]]], float), render.plane_to_image
+    )[0]
+    return fake_concept(polygon, label, size)
+
+
+def test_door_mask_over_visible_tiles_keeps_them():
+    wall = SyntheticWall(tile_w_mm=200, tile_h_mm=200, seed=61)
+    render = render_wall(wall)
+    concepts = {"door": [wall_block(render, 1400, 200, 2200, 2100, "door")]}  # glass screen
+    _, area = run(wall, concepts=concepts)
+    assert area.tiled_area_m2 == pytest.approx(render.tiled_area_m2, rel=0.01)
+    assert area.conflict_tiles > 0
+
+
+def test_floor_mask_over_bottom_rows_keeps_lattice():
+    wall = SyntheticWall(tile_w_mm=200, tile_h_mm=200, seed=61)
+    render = render_wall(wall)
+    concepts = {"floor": [wall_block(render, -50, 1690, 2450, 2300, "floor")]}
+    _, area = run(wall, concepts=concepts)
+    assert area.tiled_area_m2 == pytest.approx(render.tiled_area_m2, rel=0.01)
 
 
 def test_acceptance_reaches_tiles_beyond_the_door():
@@ -192,3 +215,25 @@ def test_missed_edge_tiles_follow_neighbouring_rows():
     ]
     _, area = run(wall, detections=detections)
     assert area.tiled_area_m2 == pytest.approx(render.visible_tiled_area_m2, rel=0.015)
+
+
+@pytest.mark.parametrize("depth", [400, 1000])
+@pytest.mark.parametrize("side", ["left", "right"])
+def test_adjacent_wall_tiles_not_counted(depth, side):
+    # Camera inside the room, turned towards the neighbouring wall; equal tiles on both walls.
+    wall = SyntheticWall(tile_w_mm=300, tile_h_mm=300, yaw_deg=-8 if side == "left" else 8,
+                         fill=0.8, seed=71)  # fmt: skip
+    render = render_wall(wall)
+    neighbour, _ = extra_plane(render, "side", depth, side=side, seed=71)
+    detections = fake_detections(render, seed=71) + neighbour
+    _, area = run(wall, detections=detections)
+    assert area.tiled_area_m2 == pytest.approx(render.tiled_area_m2, rel=0.03)
+
+
+@pytest.mark.parametrize("seed", [81, 82, 83])
+def test_tiled_floor_not_counted_without_floor_mask(seed):
+    wall = SyntheticWall(tile_w_mm=200, tile_h_mm=200, pitch_deg=-10, fill=0.7, seed=seed)
+    render = render_wall(wall)
+    floor, _ = extra_plane(render, "floor", 1500, seed=seed)
+    _, area = run(wall, detections=fake_detections(render, seed=seed) + floor)
+    assert area.tiled_area_m2 == pytest.approx(render.tiled_area_m2, rel=0.03)

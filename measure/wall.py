@@ -40,7 +40,13 @@ HIGH_RESIDUAL = 0.08  # loosely fitted: lens distortion, uneven wall or mixed pl
 OUT_OF_FRAME = 0.02  # share of the counted outline lying on the photo border
 UNDETECTED_SHARE = 0.05  # unrecognised wall area relative to the counted area
 ROOM_WORKERS = 4  # walls measured at once; each already sends 6 SAM requests in parallel
-PARTIAL_WARNINGS = {"wall_out_of_frame", "undetected_area", "high_residual"}
+CONFLICT_SHARE = 0.1  # matched tiles under a door/window/mirror mask: the masks are unreliable
+PARTIAL_WARNINGS = {
+    "wall_out_of_frame",
+    "undetected_area",
+    "high_residual",
+    "exclusion_overlaps_tiles",
+}
 
 Segmenter = Callable[[Image.Image, Sequence[str]], sam_client.Segmentation]
 
@@ -118,8 +124,12 @@ def analyze_wall(
         area = measure_area(
             fit, segmentation.tiles, segmentation.source_size, tile, segmentation.concepts
         )
+        if area.tiled_area_m2 <= 0:
+            return unavailable(warnings + ["lattice_fit_failed"])
         if fit.n_merged_suspected:
             warnings.append("merged_tiles")
+        if area.conflict_tiles > CONFLICT_SHARE * len(fit.tiles):
+            warnings.append("exclusion_overlaps_tiles")
         if area.border_fraction > OUT_OF_FRAME:
             warnings.append("wall_out_of_frame")
         if area.undetected_m2 > UNDETECTED_SHARE * area.tiled_area_m2:

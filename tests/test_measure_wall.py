@@ -4,6 +4,8 @@ import json
 import math
 from pathlib import Path
 
+import cv2
+import numpy as np
 import pytest
 from PIL import Image
 
@@ -205,3 +207,23 @@ def test_floor_requested_with_exclusions_only(tmp_path):
     measure.measure_wall(str(path), TILE, "w11", [], output_dir=tmp_path, segmenter=recording)
     assert requested[0] == (*measure.DEFAULT_EXCLUDE, "floor")
     assert requested[1] == ()
+
+
+def test_mask_over_whole_wall_is_not_measured_zero(tmp_path):
+    path, render = photo(tmp_path, "w12", seed=53)
+    size = (render.image.shape[1], render.image.shape[0])
+    whole = cv2.perspectiveTransform(
+        np.array([[[-50, -50], [2450, -50], [2450, 2150], [-50, 2150]]], float),
+        render.plane_to_image,
+    )[0]
+    inner = fake_segmenter(render)
+
+    def segmenter(image, concepts):
+        result = inner(image, concepts)
+        result.concepts["mirror"] = [fake_concept(whole, "mirror", size)]
+        return result
+
+    result = measure.measure_wall(str(path), TILE, "w12", output_dir=tmp_path, segmenter=segmenter)
+    assert result.status == "partial"
+    assert "exclusion_overlaps_tiles" in result.warnings
+    assert result.tiled_area_m2 == pytest.approx(render.tiled_area_m2, rel=0.01)

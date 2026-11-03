@@ -3,11 +3,18 @@
 import json
 from dataclasses import replace
 
+import cv2
 import numpy as np
 import pytest
 
 from measure import crop_merge as cm
-from validation.synthetic import SyntheticWall, fake_concept, fake_detections, render_wall
+from validation.synthetic import (
+    SyntheticWall,
+    extra_plane,
+    fake_concept,
+    fake_detections,
+    render_wall,
+)
 
 DOOR = (800, 100, 800, 2000)
 KEYS = {
@@ -214,3 +221,15 @@ def test_image_matches_tile_geometry():
                 contrast.append(abs(sample((x0 + x1) / 2, y1 + 4) - centre))
         assert len(contrast) > 20
         assert np.mean(np.array(contrast) > 10) > 0.9
+
+
+def test_extra_plane_meets_the_wall_at_the_shared_edge():
+    render = render_wall(SyntheticWall(tile_w_mm=200, tile_h_mm=200, yaw_deg=8, seed=3))
+    _, side = extra_plane(render, "side", 600, side="right")
+    _, floor = extra_plane(render, "floor", 600)
+    w, h = render.wall.wall_w_mm, render.wall.wall_h_mm
+    edge = cv2.perspectiveTransform(
+        np.array([[[w, 0], [w, h], [0, h]]], float), render.plane_to_image
+    )[0]
+    assert np.allclose(side[0], edge[0], atol=0.5) and np.allclose(side[3], edge[1], atol=0.5)
+    assert np.allclose(floor[0], edge[2], atol=0.5) and np.allclose(floor[1], edge[1], atol=0.5)
