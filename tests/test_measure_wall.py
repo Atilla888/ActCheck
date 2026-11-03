@@ -99,7 +99,7 @@ def test_out_of_frame_wall_is_partial(tmp_path):
     assert result.tiled_area_m2 is not None
 
 
-def test_exclusions_unavailable_still_measures(tmp_path):
+def test_exclusions_unavailable_is_partial(tmp_path):
     path, render = photo(tmp_path, "w6", seed=45)
     result = measure.measure_wall(
         str(path),
@@ -108,7 +108,8 @@ def test_exclusions_unavailable_still_measures(tmp_path):
         output_dir=tmp_path,
         segmenter=fake_segmenter(render, concepts_fail=True),
     )
-    assert result.status == "measured"
+    assert result.status == "partial"  # no hidden-area allowance: the agent must not accuse
+    assert result.tiled_area_m2 is not None
     assert "exclusions_unavailable" in result.warnings
 
 

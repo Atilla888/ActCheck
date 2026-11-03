@@ -46,6 +46,7 @@ PARTIAL_WARNINGS = {
     "undetected_area",
     "high_residual",
     "exclusion_overlaps_tiles",
+    "exclusions_unavailable",  # no hidden-area allowance, and compare.py ignores warnings
 }
 
 Segmenter = Callable[[Image.Image, Sequence[str]], sam_client.Segmentation]

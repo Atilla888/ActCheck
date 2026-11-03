@@ -53,7 +53,8 @@ and [`room_example.json`](../data/samples/room_example.json) with their overlays
 | `undetected_area` | partial | Part of the wall was not recognised (glare, cover): retake in even light |
 | `high_residual` | partial | Joints don't fit one flat grid: main camera 1×, frontal, one wall per photo |
 | `merged_tiles` | — | Informational: SAM merged neighbouring tiles; the lattice compensates |
-| `exclusions_unavailable` | — | Doors/mirrors/bathtubs could not be checked; no hidden allowance |
+| `exclusions_unavailable` | partial | Doors/mirrors/bathtubs could not be checked, so there is no hidden-area allowance: retry |
+| `exclusion_overlaps_tiles` | partial | A door/window/mirror was detected over visible tiles; those tiles are still counted |
 | `too_few_tiles` | unavailable | Too few whole tiles recognised: closer, sharper, check the tile size |
 | `lattice_fit_failed` | unavailable | Tiles don't form one grid (curved wall, herringbone, two walls) |
 | `segmentation_failed` | unavailable | SAM unreachable or no key and not cached |
