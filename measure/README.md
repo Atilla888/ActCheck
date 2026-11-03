@@ -38,8 +38,11 @@ and [`room_example.json`](../data/samples/room_example.json) with their overlays
    completed; all inferred area adds half its size to σ. Larger gaps are reported, never
    silently dropped. Door/window/mirror masks lying mostly on matched tiles are ignored (the
    tiles are visible); the floor mask only blocks masks beyond the wall.
-4. **Probe** (`probe.py`): the ring of lattice cells around the counted area is checked in the
-   photo; cells with the matched tiles' colour and joint contrast mean SAM missed tiles.
+4. **Probe** (`probe.py`): the photo is rectified onto the wall and each side of the counted
+   area is checked on its own. Where the joints of the counted tiles continue past it (thin
+   strips stepped outwards, so cut rows work too) with the tiles' colour, SAM missed tiles.
+   Joint contrast is relative and compared with the tile on both sides, colour is
+   chromaticity, so shadow and glare do not hide them; painted wall has no joints.
 5. **Overlay** (`overlay.py`): teal = matched tiles (numbered), amber = other counted area,
    dashed = inferred, grey = exclusions with their area, caption `A ± 2(σr + σs) m² (2σ)`, the
    bound `compare.py` applies to one wall.
@@ -55,7 +58,7 @@ and [`room_example.json`](../data/samples/room_example.json) with their overlays
 | Warning | Status effect | Tell the user |
 | --- | --- | --- |
 | `wall_out_of_frame` | partial | The counted tiles reach (or come within half a tile of) the photo edge: step back so the whole tiled wall plus a margin is in the photo |
-| `uncounted_tiles` | partial | Tiles seem to continue beyond the counted area (missed by segmentation): retake in even light, closer |
+| `uncounted_tiles` | partial | Tiles seem to continue beyond the counted area (missed by segmentation) and could hold more than half the 2(σr + σs) bound: retake in even light, closer |
 | `undetected_area` | partial | Part of the wall was not recognised (glare, cover): retake in even light |
 | `high_residual` | partial | Joints don't fit one flat grid: main camera 1×, frontal, one wall per photo |
 | `merged_tiles` | — | Informational: SAM merged neighbouring tiles; the lattice compensates |
@@ -104,7 +107,7 @@ and [`room_example.json`](../data/samples/room_example.json) with their overlays
   0.89 %, max 2.4 %, all within 2(σr + σs); 4 `partial` (SAM saw only part of the wall, all
   flagged); 1 `unavailable` (25 mm mosaic).
 - **Synthetic, SAM-like masks** — 40 random walls, a quarter with a tiled neighbouring wall or
-  floor in the frame: 34 `measured`, median 0.61 %, max 4.6 %, all within 2σ; 2 `partial`;
+  floor in the frame: 34 `measured`, median 0.63 %, max 4.4 %, all within 2σ; 2 `partial`;
   4 `unavailable` (too few tiles).
 - **Reference photos** (20 web photos, no physical scale): 14 `partial`, 6 `unavailable`, no
   area reported.

@@ -58,6 +58,7 @@ class AreaResult:
     conflict_ids: list[str] = field(default_factory=list)  # matched tiles under an exclusion
     uncounted_cells: int = 0  # ring cells that look like tiles in the photo but were not counted
     probed_cells: int = 0
+    uncounted_m2: float = 0.0  # rough upper estimate of the area those cells hold
     border_gap_tiles: float | None = None  # counted outline's distance from the photo edge
 
     @property
@@ -151,8 +152,8 @@ def measure_area(fit, detections, image_size, tile, concepts=None, *, seed=0, im
     full = len(fit.tiles)
     area_mm2 = region.sum() * plane.res**2 + correction
     excluded, excluded_px, undetected_m2 = _exclusions(region, undetected, masks, plane)
-    uncounted, probed = (
-        uncounted_tiles(image, fit, plane, region, blocked) if image is not None else (0, 0)
+    uncounted, probed, uncounted_mm2 = (
+        uncounted_tiles(image, fit, plane, region, blocked) if image is not None else (0, 0, 0.0)
     )
     region_px = plane.outlines(region)
     points = np.concatenate(region_px) if region_px else np.zeros((0, 2))
@@ -187,6 +188,7 @@ def measure_area(fit, detections, image_size, tile, concepts=None, *, seed=0, im
         region_px=region_px,
         uncounted_cells=uncounted,
         probed_cells=probed,
+        uncounted_m2=uncounted_mm2 / 1e6,
         border_gap_tiles=border_gap,
         completed_px=plane.outlines(completed),
         partial_ids=partial_ids,

@@ -290,3 +290,76 @@ def test_cli_bad_tile_exits_cleanly(tmp_path, capsys):
         main(["wall", str(tmp_path / "x.jpg"), "--tile", "abc"])
     assert stop.value.code == 2
     assert "300x600" in capsys.readouterr().err
+
+
+def lit_photo(tmp_path, name, wall, missed, light):
+    """A photo whose missed tiles sit in shadow or glare (why SAM missed them), and the masks."""
+    render = render_wall(wall)
+    image = render.image.astype(np.float32)
+    region = np.zeros(image.shape[:2], np.uint8)
+    for tile in render.tiles:
+        if (tile.i, tile.j) in missed:
+            x0, y0, x1, y1 = tile.cell_mm
+            corners = np.array([[[x0, y0], [x1, y0], [x1, y1], [x0, y1]]], np.float64)
+            cell = cv2.perspectiveTransform(corners, render.plane_to_image)[0]
+            cv2.fillPoly(region, [np.round(cell).astype(np.int32)], 1)
+    lit = region.astype(bool)
+    if light == "shadow":
+        image[lit] *= 0.7
+    elif light == "glare":
+        image[lit] = 0.5 * image[lit] + 0.5 * 255
+    path = tmp_path / f"{name}.png"
+    Image.fromarray(np.clip(image, 0, 255).astype(np.uint8)).save(path)
+    size = (render.image.shape[1], render.image.shape[0])
+    tiles = [
+        d
+        for d in fake_detections(render, seed=wall.seed)
+        if d["truth"] and (d["truth"]["i"], d["truth"]["j"]) not in missed
+    ]
+
+    def segmenter(image, concepts):
+        return Segmentation(source_size=size, tiles=tiles, concepts={c: [] for c in concepts})
+
+    return path, render, segmenter
+
+
+@pytest.mark.parametrize("light", ["even", "shadow", "glare"])
+@pytest.mark.parametrize(
+    ("tile", "seed", "side"),
+    [(300, 84, "left"), (600, 82, "bottom"), (150, 83, "left"), (300, 85, "lower right")],
+)
+def test_one_sided_miss_is_not_measured_low(tmp_path, tile, seed, side, light):
+    """SAM misses one column, the cut bottom row or half a column: never `measured` low."""
+    wall = SyntheticWall(tile_w_mm=300 if tile == 600 else tile, tile_h_mm=tile, seed=seed)
+    tiles = {(t.i, t.j) for t in render_wall(wall).tiles}
+    rows, columns = max(j for _, j in tiles), max(i for i, _ in tiles)
+    missed = {
+        "left": {(i, j) for i, j in tiles if i == 0},
+        "bottom": {(i, j) for i, j in tiles if j == rows},
+        "lower right": {(i, j) for i, j in tiles if i == columns - 1 and j > rows // 2},
+    }[side]
+    path, render, segmenter = lit_photo(tmp_path, f"m{seed}", wall, missed, light)
+    spec = TILE.model_copy(update={"width_mm": wall.tile_w_mm, "height_mm": wall.tile_h_mm})
+    result = measure.measure_wall(str(path), spec, "m", output_dir=tmp_path, segmenter=segmenter)
+    if result.status == "measured":  # then it must be within the bound compare.py applies
+        bound = 2 * (result.sigma_random_m2 + result.sigma_system_m2)
+        assert abs(result.tiled_area_m2 - render.tiled_area_m2) <= bound, result.warnings
+
+
+def test_thin_missed_sliver_stays_measured(tmp_path):
+    """SAM missed a cut sliver a few millimetres wide along one wall end: inside the bound, so
+    the probe must not make the wall partial (sweep wall 2)."""
+    from validation.synthetic_eval import _mask_segmenter, random_walls
+
+    wall = random_walls(40)[2]
+    render = render_wall(wall)
+    path = tmp_path / "sliver.png"
+    Image.fromarray(render.image).save(path)
+    spec = TileSpec(width_mm=wall.tile_w_mm, height_mm=wall.tile_h_mm, grout_mm=wall.grout_mm,
+                    source="box_label")  # fmt: skip
+    result = measure.measure_wall(
+        str(path), spec, "s", output_dir=tmp_path, segmenter=_mask_segmenter(render)
+    )
+    assert result.status == "measured", result.warnings
+    bound = 2 * (result.sigma_random_m2 + result.sigma_system_m2)
+    assert abs(result.tiled_area_m2 - render.visible_tiled_area_m2) <= bound

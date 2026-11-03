@@ -46,7 +46,7 @@ OUT_OF_FRAME = 0.02  # share of the counted outline lying on the photo border
 UNDETECTED_SHARE = 0.05  # unrecognised wall area relative to the counted area
 ROOM_WORKERS = 4  # walls measured at once; each already sends 6 SAM requests in parallel
 BORDER_GAP = 0.5  # tiles: a counted outline this close to the photo edge may continue beyond it
-UNCOUNTED_SHARE = 0.2  # of probed ring cells that look like tiles SAM missed
+UNCOUNTED_SHARE = 0.5  # of the 2(σr + σs) bound: tiles that seem to continue past the count
 CONFLICT_SHARE = 0.1  # matched tiles under a door/window/mirror mask: the masks are unreliable
 PARTIAL_WARNINGS = {
     "wall_out_of_frame",
@@ -147,7 +147,8 @@ def analyze_wall(
         near_edge = area.border_gap_tiles is not None and area.border_gap_tiles < BORDER_GAP
         if area.border_fraction > OUT_OF_FRAME or near_edge:
             warnings.append("wall_out_of_frame")
-        if area.uncounted_cells >= max(2, UNCOUNTED_SHARE * area.probed_cells):
+        bound = 2 * (area.sigma_random_m2 + area.sigma_system_m2)
+        if area.uncounted_m2 > UNCOUNTED_SHARE * bound:
             warnings.append("uncounted_tiles")
         if area.undetected_m2 > UNDETECTED_SHARE * area.tiled_area_m2:
             warnings.append("undetected_area")

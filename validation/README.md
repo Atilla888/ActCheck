@@ -113,7 +113,7 @@ uv run python -m validation.synthetic_eval --mode sam            # 16 renders th
 
 | Mode | Walls | measured | partial | unavailable | measured: median / max abs error | within 2σ |
 | --- | ---: | ---: | ---: | ---: | --- | ---: |
-| SAM-like masks (dropout ≤15 %, merges, false positives; ¼ with a tiled neighbouring wall or floor) | 40 | 34 | 2 | 4 | 0.61 % / 4.6 % | 34/34 |
+| SAM-like masks (dropout ≤15 %, merges, false positives; ¼ with a tiled neighbouring wall or floor) | 40 | 34 | 2 | 4 | 0.63 % / 4.4 % | 34/34 |
 | SAM 3.1 on renders | 16 | 11 | 4 | 1 | 0.89 % / 2.4 % | 11/11 |
 
 "Within 2σ" uses 2(σr + σs), the bound `agent/compare.py` applies to one wall. Partial walls
