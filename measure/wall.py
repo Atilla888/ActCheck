@@ -33,6 +33,11 @@ from schemas.measure import (
 
 log = logging.getLogger(__name__)
 
+# Pillow refuses images above ~179 MP as decompression bombs; 200 MP phone modes are real photos.
+PHOTO_PIXELS = 210_000_000
+Image.MAX_IMAGE_PIXELS = max(Image.MAX_IMAGE_PIXELS or 0, PHOTO_PIXELS)
+DRAFT_SIDE = 4800  # JPEG decode scale: larger photos are reduced by 1/2, 1/4 ... down to this
+
 DEFAULT_EXCLUDE = ("door", "mirror", "window", "bathtub")
 BLOCKING = ("floor",)
 MAX_RESIDUAL = 0.25  # of the tile size in pixels: no consistent lattice
@@ -261,8 +266,10 @@ def _load(image_path):
     try:
         data = path.read_bytes()
         with Image.open(path) as original:
+            # A 200 MP phone photo decodes at half scale: 3x3 crops of ~1600 px need no more.
+            original.draft("RGB", (DRAFT_SIDE, DRAFT_SIDE))
             return ImageOps.exif_transpose(original).convert("RGB"), data
-    except (OSError, UnidentifiedImageError, ValueError):
+    except (OSError, UnidentifiedImageError, ValueError, Image.DecompressionBombError):
         return None, None
 
 

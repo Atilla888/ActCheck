@@ -45,7 +45,10 @@ def main(argv=None, *, segmenter=None):
         result = count_objects(args.photo, args.concept, output_dir=args.out, segmenter=segmenter)
         print(result.model_dump_json(indent=2))
         return 0
-    tile = parse_tile(args.tile, args.grout, args.source)
+    try:
+        tile = parse_tile(args.tile, args.grout, args.source)
+    except (argparse.ArgumentTypeError, ValueError) as error:
+        parser.error(str(error))
     if args.command == "wall":
         wall_id = args.wall_id or Path(args.photo).stem
         analysis = analyze_wall(

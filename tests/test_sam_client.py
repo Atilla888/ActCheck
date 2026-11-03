@@ -129,3 +129,36 @@ def test_persistent_failure_gives_up(monkeypatch):
     with pytest.raises(sam.SegmentationError, match="after 2 attempts"):
         asyncio.run(sam._fetch_all(_jobs(), object(), keyless_settings(), "unused"))
     assert len(calls) == 2
+
+
+def test_segment_refuses_in_worker_process(monkeypatch, tmp_path):
+    monkeypatch.setattr(sam.multiprocessing, "parent_process", lambda: object())
+    with pytest.raises(RuntimeError, match="__main__"):
+        sam.segment(Image.new("RGB", (64, 64)), settings=keyless_settings(), cache_dir=tmp_path)
+
+
+def test_default_workers_are_capped(monkeypatch):
+    monkeypatch.delenv("ACTCHECK_SAM_WORKERS", raising=False)
+    monkeypatch.setattr(sam.os, "cpu_count", lambda: 64)
+    assert sam._workers(20) == 4
+
+
+def test_concurrent_cache_writes_do_not_collide(tmp_path):
+    import threading
+
+    target = tmp_path / "same.json"
+    errors = []
+
+    def write():
+        try:
+            for _ in range(30):
+                sam._write_json(target, [1, 2, 3])
+        except OSError as error:
+            errors.append(error)
+
+    threads = [threading.Thread(target=write) for _ in range(12)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert errors == [] and json.loads(target.read_text()) == [1, 2, 3]

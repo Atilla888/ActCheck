@@ -12,8 +12,10 @@ import base64
 import hashlib
 import io
 import json
+import multiprocessing
 import os
 import time
+import uuid
 from concurrent.futures import ProcessPoolExecutor
 from concurrent.futures.process import BrokenProcessPool
 from dataclasses import dataclass, field
@@ -35,6 +37,7 @@ OFFICIAL_BASE_URL = "https://api.meta.ai/v1"
 TILE_PROMPT = "tile"
 MAX_SIDE = 1600
 CONCURRENCY = 6
+MAX_WORKERS = 4
 # A healthy request streams back in 1-6 s; a stalled connection used to hang until the 240 s
 # timeout and fail the whole wall. Fail fast on connect, bound each attempt, retry transient errors.
 CONNECT_TIMEOUT = 10
@@ -165,7 +168,7 @@ async def fetch(client, settings, data, prompt, *, cache_dir=CACHE):
         raise RuntimeError("Stream did not complete; response not cached")
     saved = {"spec": spec, "seconds": time.monotonic() - start, "events": events}
     cache.parent.mkdir(parents=True, exist_ok=True)
-    temp = cache.with_suffix(".tmp")
+    temp = _temporary(cache)
     temp.write_text(json.dumps(saved))
     temp.replace(cache)
     return saved, key, False
@@ -190,6 +193,13 @@ def segment(
     image, concepts=(), *, tiles=True, crops=True, client=None, settings=None, cache_dir=CACHE
 ):
     """Tile masks (merged, source pixels) plus one full-frame detection list per concept."""
+    if multiprocessing.parent_process() is not None:
+        # A spawned conversion worker re-imports the caller's script; an unguarded call would
+        # repeat every SAM request in every worker.
+        raise RuntimeError(
+            "segment() called in a worker process: guard the calling script with "
+            "if __name__ == '__main__':"
+        )
     started = time.monotonic()
     settings = settings or Settings()
     cache_dir = Path(cache_dir)
@@ -253,7 +263,7 @@ def _convert_all(args):
     calls segment() without an `if __name__ == "__main__":` guard breaks the pool, and the
     conversion then runs in this process, only slower. ACTCHECK_SAM_WORKERS=1 never spawns.
     """
-    workers = min(len(args), int(os.environ.get("ACTCHECK_SAM_WORKERS", os.cpu_count() or 1)))
+    workers = _workers(len(args))
     if workers > 1:
         try:
             with ProcessPoolExecutor(workers, mp_context=get_context("spawn")) as pool:
@@ -261,6 +271,16 @@ def _convert_all(args):
         except (BrokenProcessPool, RuntimeError, OSError):
             pass
     return [_convert_response(arg) for arg in args]
+
+
+def _workers(jobs):
+    """Conversion processes: ACTCHECK_SAM_WORKERS, else up to 4 (each loads numpy and OpenCV)."""
+    default = min(MAX_WORKERS, os.cpu_count() or 1)
+    try:
+        wanted = int(os.environ.get("ACTCHECK_SAM_WORKERS", default))
+    except ValueError:
+        wanted = default
+    return max(1, min(jobs, wanted))
 
 
 def _convert_response(args):
@@ -273,9 +293,14 @@ def _convert_response(args):
     ]
 
 
+def _temporary(path):
+    """A sibling temp name unique to this writer: walls measured in parallel share caches."""
+    return path.with_name(f".{path.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
+
+
 def _write_json(path, value):
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(".tmp")
+    temporary = _temporary(path)
     temporary.write_text(json.dumps(value))
     temporary.replace(path)
 

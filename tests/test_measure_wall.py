@@ -256,9 +256,7 @@ def test_missed_outer_tiles_are_partial(tmp_path):
 def test_out_of_frame_with_missed_border_tiles_is_partial(tmp_path):
     path, render = photo(tmp_path, "w14", fill=1.3, seed=55)
     size = (render.image.shape[1], render.image.shape[0])
-    tiles = [
-        d for d in fake_detections(render, seed=55) if d["truth"] and not d["edge_truncated"]
-    ]
+    tiles = [d for d in fake_detections(render, seed=55) if d["truth"] and not d["edge_truncated"]]
 
     def segmenter(image, concepts):
         return Segmentation(source_size=size, tiles=tiles, concepts={c: [] for c in concepts})
@@ -275,3 +273,20 @@ def test_clean_wall_stays_measured(tmp_path, seed):
         str(path), TILE, "w", output_dir=tmp_path, segmenter=fake_segmenter(render)
     )
     assert result.status == "measured", result.warnings
+
+
+def test_huge_photo_does_not_raise(tmp_path, monkeypatch):
+    from PIL import Image as PILImage
+
+    path = tmp_path / "huge.png"
+    PILImage.new("RGB", (400, 300), "white").save(path)
+    monkeypatch.setattr(PILImage, "MAX_IMAGE_PIXELS", 50_000)  # opening trips the bomb guard
+    result = measure.measure_wall(str(path), TILE, "huge", output_dir=tmp_path)
+    assert result.status == "unavailable" and "unreadable_image" in result.warnings
+
+
+def test_cli_bad_tile_exits_cleanly(tmp_path, capsys):
+    with pytest.raises(SystemExit) as stop:
+        main(["wall", str(tmp_path / "x.jpg"), "--tile", "abc"])
+    assert stop.value.code == 2
+    assert "300x600" in capsys.readouterr().err
