@@ -41,6 +41,8 @@ WARNING_TEXT = {
     "too_few_tiles": "too few whole tiles were recognised",
     "lattice_fit_failed": "the recognised tiles do not form one consistent grid",
     "exclusions_unavailable": "doors, mirrors and bathtubs could not be checked",
+    "exclusion_overlaps_tiles": "a door, window or mirror was detected over visible tiles",
+    "uncounted_tiles": "tiles seem to continue beyond the counted area",
 }
 
 
@@ -120,8 +122,7 @@ def render_animation(
     frame = frame.convert("RGBA")
     total = max(2, round(fps * seconds))
     build = max(1, int(total * 0.75))
-    blocked = set(area.blocked_ids)
-    ordered = sorted((t for t in fit.tiles if t.det_id not in blocked), key=lambda t: (t.j, t.i))
+    ordered = sorted(fit.tiles, key=lambda t: (t.j, t.i))
     polygons = [_tile_polygon(fit, t, scale) for t in ordered]
     frames = []
     for index in range(total):
@@ -233,8 +234,7 @@ def _draw_measurement(layer, fit, area, scale, count):
                 stroke_fill=INK + (255,),
             )  # fmt: skip
     draw = ImageDraw.Draw(layer)
-    blocked = set(area.blocked_ids)
-    ordered = sorted((t for t in fit.tiles if t.det_id not in blocked), key=lambda t: (t.j, t.i))
+    ordered = sorted(fit.tiles, key=lambda t: (t.j, t.i))
     label_size = np.clip(fit.tile_px * scale * 0.32, 9, 22)
     font = _font(label_size)
     for number, tile in enumerate(ordered, 1):
@@ -273,7 +273,8 @@ def _dashed(draw, points, color, dash=8.0):
 
 
 def _caption_lines(wall_id, fit, area, tile):
-    interval = 2 * float(np.hypot(area.sigma_random_m2, area.sigma_system_m2))
+    # The bound agent/compare.py applies to one wall: 2 x (random + systematic).
+    interval = 2 * float(area.sigma_random_m2 + area.sigma_system_m2)
     if tile is not None:
         size = f"{tile.width_mm:g} × {tile.height_mm:g} mm"
     else:

@@ -108,7 +108,7 @@ def test_field_table(tmp_path):
         ExcludedRegion(label="door", area_m2=1.6, reason="opening"),
     ]
     results = {
-        "w1": wall("w1", 4.12, 0.03, 0.04),
+        "w1": wall("w1", 4.12, 0.02, 0.03),
         "w2": wall("w2", 4.90, 0.06, 0.08, excluded=tub_and_door),
     }
     calls = []
@@ -127,12 +127,12 @@ def test_field_table(tmp_path):
     w1, w2 = table["walls"]
     assert w1["error_pct"] == pytest.approx(3.0) and w1["abs_error_pct"] == pytest.approx(3.0)
     assert w2["error_pct"] == pytest.approx(-2.0) and w2["abs_error_pct"] == pytest.approx(2.0)
-    assert w1["within_2sigma"] is False  # 0.12 > 2·hypot(0.03, 0.04) = 0.10
-    assert w2["within_2sigma"] is True  # 0.10 ≤ 2·hypot(0.06, 0.08) = 0.20
+    assert w1["within_2sigma"] is False  # 0.12 > 2·(0.02 + 0.03) = 0.10, as compare.py
+    assert w2["within_2sigma"] is True  # 0.10 ≤ 2·(0.06 + 0.08) = 0.28
     (room,) = table["rooms"]
     assert room["laser_m2"] == pytest.approx(9.0) and room["measured_m2"] == pytest.approx(9.02)
     assert room["abs_error_pct"] == pytest.approx(0.22, abs=0.01)
-    assert room["sigma_m2"] == pytest.approx(0.187, abs=1e-3)  # sqrt(.03² + .06²) + .04 + .08
+    assert room["sigma_m2"] == pytest.approx(0.173, abs=1e-3)  # sqrt(.02² + .06²) + .03 + .08
     assert room["complete"] is True and room["meets_3pct_gate"] is True
     summary = table["summary"]
     assert summary["n_walls"] == 2 and summary["n_measured"] == 2

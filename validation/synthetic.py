@@ -276,6 +276,16 @@ def _minus(rect, hole):
 
 def _plane_to_image(wall):
     """Pinhole homography (mm → px) whose wall bounding box spans ``fill``, centred."""
+    camera, rotation, translation = _camera(wall)
+    return camera @ np.column_stack([rotation[:, 0], rotation[:, 1], translation])
+
+
+def _camera(wall):
+    """(intrinsics incl. centring shift, rotation, translation): image ~ A·(R·X + t), X in mm.
+
+    World frame: the wall is Z = 0 with X right and Y down from its top-left corner; the room
+    (and the camera) lie towards negative Z.
+    """
     width, height = wall.image_size
     wall_w, wall_h = wall.wall_w_mm, wall.wall_h_mm
     focal = 0.9 * max(width, height)
@@ -299,10 +309,61 @@ def _plane_to_image(wall):
     # Corners must stay in front of the camera; the span shrinks monotonically beyond that.
     depth = (corners - (wall_w / 2, wall_h / 2)) @ rotation[2, :2]
     near = max(0.0, -depth.min()) + 1e-3 * max(wall_w, wall_h)
-    result = homography(brentq(excess, near, near + 1e4 * max(wall_w, wall_h)))
-    projected = _project(result, corners)
+    distance = brentq(excess, near, near + 1e4 * max(wall_w, wall_h))
+    projected = _project(homography(distance), corners)
     shift = np.array([width, height]) / 2 - (projected.min(0) + projected.max(0)) / 2
-    return np.array([[1, 0, shift[0]], [0, 1, shift[1]], [0, 0, 1]]) @ result
+    centring = np.array([[1, 0, shift[0]], [0, 1, shift[1]], [0, 0, 1]])
+    return centring @ camera, rotation, centred + (0, 0, distance)
+
+
+def extra_plane(render, kind, depth_mm, *, side="right", seed=0, erosion_px=1.0, jitter_px=0.5):
+    """Tiles of a perpendicular side wall or floor seen by the same camera as ``render``.
+
+    The plane joins the wall at its ``side`` edge (``kind="side"``) or bottom edge
+    (``kind="floor"``) and runs ``depth_mm`` towards the camera, tiled like the wall. Returns
+    (SAM-like masks of its tiles, ids prefixed by ``kind``; the plane's image outline).
+    """
+    wall = render.wall
+    camera, rotation, translation = _camera(wall)
+    centre = -rotation.T @ translation
+    if kind == "side" and not 0 < centre[0] < wall.wall_w_mm:
+        raise ValueError("The camera is outside the room: it cannot see a side wall's tiles")
+    if kind == "floor" and centre[1] >= wall.wall_h_mm:
+        raise ValueError("The camera is below the floor")
+    depth = min(depth_mm, 0.8 * abs(centre[2]))
+    if kind == "floor":
+        origin, axis_u, axis_v = (0, wall.wall_h_mm, 0), (1, 0, 0), (0, 0, -1)
+        extent = (wall.wall_w_mm, depth)
+    elif kind == "side":
+        x = wall.wall_w_mm if side == "right" else 0.0
+        origin, axis_u, axis_v = (x, 0, 0), (0, 0, -1), (0, 1, 0)
+        extent = (depth, wall.wall_h_mm)
+    else:
+        raise ValueError(f"Unknown plane kind: {kind}")
+    origin, axis_u, axis_v = (np.asarray(v, np.float64) for v in (origin, axis_u, axis_v))
+    homography = camera @ np.column_stack(
+        [rotation @ axis_u, rotation @ axis_v, rotation @ origin + translation]
+    )
+    size = (render.image.shape[1], render.image.shape[0])
+    rng = np.random.default_rng(seed)
+    pitch_u, pitch_v = wall.tile_w_mm + wall.grout_mm, wall.tile_h_mm + wall.grout_mm
+    detections = []
+    for j in range(int(extent[1] // pitch_v) + 1):
+        for i in range(int(extent[0] // pitch_u) + 1):
+            x0, y0 = i * pitch_u + wall.grout_mm / 2, j * pitch_v + wall.grout_mm / 2
+            x1 = min(x0 + wall.tile_w_mm, extent[0])
+            y1 = min(y0 + wall.tile_h_mm, extent[1])
+            if x1 <= x0 or y1 <= y0:
+                continue
+            polygon = _project(homography, _rect(x0, y0, x1, y1))
+            visible = _mask(polygon, size, None, erosion_px)
+            detection = _detection(
+                visible, size, run_id=kind, object_id=f"{i}_{j}", confidence=0.8, truth=None,
+                rng=rng, jitter=jitter_px,
+            )  # fmt: skip
+            if detection:
+                detections.append({**detection, "id": f"{kind}:{i}_{j}"})
+    return detections, _project(homography, _rect(0, 0, *extent))
 
 
 def _photograph(wall, homography, tiles, door, band, rng):

@@ -75,7 +75,7 @@ Private photos, consent records, and room notes stay in `data/private/`. Publish
 ## Readiness
 
 - Preparation checks cover locked offline dependency sync, Python 3.12 imports, valid TOML, and Git exclusions for secrets/private data. Frontend build and browser checks are documented in its README.
-- Measurement: `measure_wall` / `measure_room` / `count_objects` implement team plan §5.1 on the shared schema; 121 offline tests pass. On 16 synthetic renders segmented by SAM 3.1, the 11 walls reported as `measured` are within 1.33 % (all within 2σ); the other five are flagged `partial` or refused. Synthetic accuracy is not field accuracy.
+- Measurement: `measure_wall` / `measure_room` / `count_objects` implement team plan §5.1 on the shared schema; 121 offline tests pass. On 16 synthetic renders segmented by SAM 3.1, the 11 walls reported as `measured` are within 2.4 % (all within 2σ); the other five are flagged `partial` or refused. Tiles of a neighbouring wall or floor are not counted, and missed tiles make a wall `partial`. Synthetic accuracy is not field accuracy.
 - Field check: 1–2 laser-measured walls are planned ([protocol](validation/FIELD_PROTOCOL.md)); no field data exists yet. The 20 collected web photos have no physical scale and only show fit/refusal behaviour.
 - The standalone SAM benchmark has been exercised on the collected photos. Credentials stay in the ignored local `.env`.
 - Meta API reference material is available in `.claude/skills/meta-model-api/SKILL.md`. Model access setup and unresolved details are recorded in `docs/MODEL_ACCESS.md`.

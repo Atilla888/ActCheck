@@ -2,6 +2,9 @@
 
 import asyncio
 import json
+import os
+import subprocess
+import sys
 import time
 
 import numpy as np
@@ -129,3 +132,67 @@ def test_persistent_failure_gives_up(monkeypatch):
     with pytest.raises(sam.SegmentationError, match="after 2 attempts"):
         asyncio.run(sam._fetch_all(_jobs(), object(), keyless_settings(), "unused"))
     assert len(calls) == 2
+
+
+SPAWN_SCRIPT = """
+import multiprocessing, os, sys
+sys.path.insert(0, os.environ["REPO"])
+from PIL import Image
+from measure import sam_client as sam
+
+def log(text):
+    with open(os.environ["MARK"], "a") as handle:
+        handle.write(text + "\\n")
+
+# Deliberately unguarded: a spawned worker re-imports this module as __mp_main__.
+if multiprocessing.current_process().name != "MainProcess":
+    log(f"reimport:{sam._in_spawn_bootstrap()}")
+
+def child():
+    settings = sam.Settings(_env_file=None, meta_api_key=None)
+    try:
+        sam.segment(Image.new("RGB", (64, 64)), settings=settings, cache_dir=os.environ["CACHE"])
+    except Exception as error:  # a started child (uvicorn --reload) must reach the real checks
+        log(f"run:{type(error).__name__}")
+
+if __name__ == "__main__":
+    process = multiprocessing.get_context("spawn").Process(target=child)
+    process.start()
+    process.join()
+"""
+
+
+def test_worker_guard_fires_only_while_a_spawned_child_reimports(tmp_path):
+    script = tmp_path / "unguarded.py"
+    script.write_text(SPAWN_SCRIPT)
+    mark = tmp_path / "mark.txt"
+    env = {**os.environ, "MARK": str(mark), "REPO": str(sam.ROOT), "CACHE": str(tmp_path)}
+    subprocess.run([sys.executable, str(script)], env=env, check=True, timeout=180)
+    assert mark.read_text().split() == ["reimport:True", "run:SegmentationError"]
+
+
+def test_default_workers_are_capped(monkeypatch):
+    monkeypatch.delenv("ACTCHECK_SAM_WORKERS", raising=False)
+    monkeypatch.setattr(sam.os, "cpu_count", lambda: 64)
+    assert sam._workers(20) == 4
+
+
+def test_concurrent_cache_writes_do_not_collide(tmp_path):
+    import threading
+
+    target = tmp_path / "same.json"
+    errors = []
+
+    def write():
+        try:
+            for _ in range(30):
+                sam._write_json(target, [1, 2, 3])
+        except OSError as error:
+            errors.append(error)
+
+    threads = [threading.Thread(target=write) for _ in range(12)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert errors == [] and json.loads(target.read_text()) == [1, 2, 3]

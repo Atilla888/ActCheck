@@ -33,7 +33,7 @@ git-ignored.
 ## Photo: one per wall
 
 - Get the **whole tiled area in frame, with a margin on every side** (some ceiling, floor or
-  neighbouring wall visible). If the photo edge cuts tiles, the wall is reported `partial`, and a
+  neighbouring wall visible; tiles of a neighbouring wall or the floor are not counted). If the photo edge cuts tiles, the wall is reported `partial`, and a
   partial wall can't pass the gate.
 - Use the **main camera (1×)**, not the ultra-wide (0.5×), which bends the grout lines.
 - Shoot **as frontally as possible**: face the middle of the wall from 2–3 m with the phone

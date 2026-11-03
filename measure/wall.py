@@ -33,6 +33,11 @@ from schemas.measure import (
 
 log = logging.getLogger(__name__)
 
+# Pillow refuses images above ~179 MP as decompression bombs; 200 MP phone modes are real photos.
+PHOTO_PIXELS = 210_000_000
+Image.MAX_IMAGE_PIXELS = max(Image.MAX_IMAGE_PIXELS or 0, PHOTO_PIXELS)
+DRAFT_SIDE = 4800  # JPEG decode scale: larger photos are reduced by 1/2, 1/4 ... down to this
+
 DEFAULT_EXCLUDE = ("door", "mirror", "window", "bathtub")
 BLOCKING = ("floor",)
 MAX_RESIDUAL = 0.25  # of the tile size in pixels: no consistent lattice
@@ -40,7 +45,17 @@ HIGH_RESIDUAL = 0.08  # loosely fitted: lens distortion, uneven wall or mixed pl
 OUT_OF_FRAME = 0.02  # share of the counted outline lying on the photo border
 UNDETECTED_SHARE = 0.05  # unrecognised wall area relative to the counted area
 ROOM_WORKERS = 4  # walls measured at once; each already sends 6 SAM requests in parallel
-PARTIAL_WARNINGS = {"wall_out_of_frame", "undetected_area", "high_residual"}
+BORDER_GAP = 0.5  # tiles: a counted outline this close to the photo edge may continue beyond it
+UNCOUNTED_SHARE = 0.5  # of the 2(σr + σs) bound: tiles that seem to continue past the count
+CONFLICT_SHARE = 0.1  # matched tiles under a door/window/mirror mask: the masks are unreliable
+PARTIAL_WARNINGS = {
+    "wall_out_of_frame",
+    "undetected_area",
+    "high_residual",
+    "exclusion_overlaps_tiles",
+    "exclusions_unavailable",  # no hidden-area allowance, and compare.py ignores warnings
+    "uncounted_tiles",
+}
 
 Segmenter = Callable[[Image.Image, Sequence[str]], sam_client.Segmentation]
 
@@ -116,12 +131,25 @@ def analyze_wall(
         if fit.residual_px > MAX_RESIDUAL * fit.tile_px:
             return unavailable(["lattice_fit_failed"])
         area = measure_area(
-            fit, segmentation.tiles, segmentation.source_size, tile, segmentation.concepts
+            fit,
+            segmentation.tiles,
+            segmentation.source_size,
+            tile,
+            segmentation.concepts,
+            image=image,
         )
+        if area.tiled_area_m2 <= 0:
+            return unavailable(warnings + ["lattice_fit_failed"])
         if fit.n_merged_suspected:
             warnings.append("merged_tiles")
-        if area.border_fraction > OUT_OF_FRAME:
+        if area.conflict_tiles > CONFLICT_SHARE * len(fit.tiles):
+            warnings.append("exclusion_overlaps_tiles")
+        near_edge = area.border_gap_tiles is not None and area.border_gap_tiles < BORDER_GAP
+        if area.border_fraction > OUT_OF_FRAME or near_edge:
             warnings.append("wall_out_of_frame")
+        bound = 2 * (area.sigma_random_m2 + area.sigma_system_m2)
+        if area.uncounted_m2 > UNCOUNTED_SHARE * bound:
+            warnings.append("uncounted_tiles")
         if area.undetected_m2 > UNDETECTED_SHARE * area.tiled_area_m2:
             warnings.append("undetected_area")
         if fit.residual_px > HIGH_RESIDUAL * fit.tile_px:
@@ -239,8 +267,10 @@ def _load(image_path):
     try:
         data = path.read_bytes()
         with Image.open(path) as original:
+            # A 200 MP phone photo decodes at half scale: 3x3 crops of ~1600 px need no more.
+            original.draft("RGB", (DRAFT_SIDE, DRAFT_SIDE))
             return ImageOps.exif_transpose(original).convert("RGB"), data
-    except (OSError, UnidentifiedImageError, ValueError):
+    except (OSError, UnidentifiedImageError, ValueError, Image.DecompressionBombError):
         return None, None
 
 

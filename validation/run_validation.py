@@ -126,7 +126,7 @@ def _wall(row, measure, photo_dir):
     if result.tiled_area_m2 is None:
         return wall
     sigma_random, sigma_system = result.sigma_random_m2 or 0.0, result.sigma_system_m2 or 0.0
-    sigma = math.hypot(sigma_random, sigma_system)
+    sigma = sigma_random + sigma_system  # one wall's bound in agent/compare.py
     wall.update(
         sigma_m2=round(sigma, 4), sigma_random_m2=sigma_random, sigma_system_m2=sigma_system
     )
