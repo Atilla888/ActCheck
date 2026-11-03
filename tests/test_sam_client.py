@@ -2,6 +2,9 @@
 
 import asyncio
 import json
+import os
+import subprocess
+import sys
 import time
 
 import numpy as np
@@ -131,10 +134,41 @@ def test_persistent_failure_gives_up(monkeypatch):
     assert len(calls) == 2
 
 
-def test_segment_refuses_in_worker_process(monkeypatch, tmp_path):
-    monkeypatch.setattr(sam.multiprocessing, "parent_process", lambda: object())
-    with pytest.raises(RuntimeError, match="__main__"):
-        sam.segment(Image.new("RGB", (64, 64)), settings=keyless_settings(), cache_dir=tmp_path)
+SPAWN_SCRIPT = """
+import multiprocessing, os, sys
+sys.path.insert(0, os.environ["REPO"])
+from PIL import Image
+from measure import sam_client as sam
+
+def log(text):
+    with open(os.environ["MARK"], "a") as handle:
+        handle.write(text + "\\n")
+
+# Deliberately unguarded: a spawned worker re-imports this module as __mp_main__.
+if multiprocessing.current_process().name != "MainProcess":
+    log(f"reimport:{sam._in_spawn_bootstrap()}")
+
+def child():
+    settings = sam.Settings(_env_file=None, meta_api_key=None)
+    try:
+        sam.segment(Image.new("RGB", (64, 64)), settings=settings, cache_dir=os.environ["CACHE"])
+    except Exception as error:  # a started child (uvicorn --reload) must reach the real checks
+        log(f"run:{type(error).__name__}")
+
+if __name__ == "__main__":
+    process = multiprocessing.get_context("spawn").Process(target=child)
+    process.start()
+    process.join()
+"""
+
+
+def test_worker_guard_fires_only_while_a_spawned_child_reimports(tmp_path):
+    script = tmp_path / "unguarded.py"
+    script.write_text(SPAWN_SCRIPT)
+    mark = tmp_path / "mark.txt"
+    env = {**os.environ, "MARK": str(mark), "REPO": str(sam.ROOT), "CACHE": str(tmp_path)}
+    subprocess.run([sys.executable, str(script)], env=env, check=True, timeout=180)
+    assert mark.read_text().split() == ["reimport:True", "run:SegmentationError"]
 
 
 def test_default_workers_are_capped(monkeypatch):

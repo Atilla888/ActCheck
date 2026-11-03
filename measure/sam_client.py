@@ -193,7 +193,7 @@ def segment(
     image, concepts=(), *, tiles=True, crops=True, client=None, settings=None, cache_dir=CACHE
 ):
     """Tile masks (merged, source pixels) plus one full-frame detection list per concept."""
-    if multiprocessing.parent_process() is not None:
+    if _in_spawn_bootstrap():
         # A spawned conversion worker re-imports the caller's script; an unguarded call would
         # repeat every SAM request in every worker.
         raise RuntimeError(
@@ -271,6 +271,15 @@ def _convert_all(args):
         except (BrokenProcessPool, RuntimeError, OSError):
             pass
     return [_convert_response(arg) for arg in args]
+
+
+def _in_spawn_bootstrap():
+    """True only while a spawned process re-imports the parent's main script.
+
+    multiprocessing marks exactly that phase; afterwards the child is an ordinary caller (a
+    uvicorn --reload or --workers server process must measure normally).
+    """
+    return bool(getattr(multiprocessing.current_process(), "_inheriting", False))
 
 
 def _workers(jobs):
