@@ -117,7 +117,7 @@ export function NewProjectDialog({
                   min="10"
                   max="2000"
                   step="0.1"
-                  defaultValue="300"
+                  inputMode="decimal"
                   required
                 />
               </Field>
@@ -132,14 +132,14 @@ export function NewProjectDialog({
                   min="10"
                   max="2000"
                   step="0.1"
-                  defaultValue="600"
+                  inputMode="decimal"
                   required
                 />
               </Field>
             </div>
             <FieldDescription>
               {t(
-                "Use the dimensions on the box label. Projects and files stay in this browser tab and are cleared on reload."
+                "Copy them from the box label: every area is computed from this size. Projects and files stay in this browser tab and are cleared on reload."
               )}
             </FieldDescription>
             {error && (
