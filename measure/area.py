@@ -21,6 +21,7 @@ BLOCKING_ONLY = {"floor"}  # stops acceptance but is not an exclusion of the wal
 GROUT_TOLERANCE_MM = 1.0
 TILE_TOLERANCE_MM = {"box_label": 0.5, "tape": 1.0, "act": 1.5, "user": 1.5}
 MAX_COMPLETED_CELLS = 4
+MAX_COMPLETED_MM2 = 0.6e6  # larger unseen holes stay allowances, whatever the tile size
 MAX_RASTER = 4000  # plane raster pixels per side
 IMAGE_SIDE = 2000  # detections are rasterised at this long side
 REACH_MARGIN_MM = 3000  # how far beyond the matched cells tiles and exclusions are considered
@@ -116,6 +117,9 @@ def measure_area(fit, detections, image_size, tile, concepts=None, *, seed=0, im
         accepted = cv2.dilate(accepted.astype(np.uint8), np.ones((2 * grow + 1,) * 2, np.uint8))
     region = (cells | accepted.astype(bool)) & plane.frame
     bridged = _close_gaps(region, fit, plane) & plane.frame & ~blocked & ~region
+    patches, _ = ndimage.label(bridged)
+    sizes = np.bincount(patches.ravel()) * plane.res**2
+    bridged &= (sizes <= MAX_COMPLETED_MM2)[patches]  # a larger unseen patch stays a hole
     region |= bridged
     filled = ndimage.binary_fill_holes(region)
     holes, count = ndimage.label(filled & ~region)
@@ -124,7 +128,8 @@ def measure_area(fit, detections, image_size, tile, concepts=None, *, seed=0, im
         part = holes[hole] == index
         if (part & blocked[hole]).sum() > 0.5 * part.sum():
             continue  # a mirror or window inside the tiling: reported as an exclusion
-        if part.sum() * plane.res**2 <= MAX_COMPLETED_CELLS * cell_area * 1.05:
+        size = part.sum() * plane.res**2
+        if size <= min(MAX_COMPLETED_CELLS * cell_area * 1.05, MAX_COMPLETED_MM2):
             completed[hole] |= part
         else:
             undetected[hole] |= part
@@ -154,8 +159,9 @@ def measure_area(fit, detections, image_size, tile, concepts=None, *, seed=0, im
     inner = cv2.erode(plane.frame.astype(np.uint8), np.ones((5, 5), np.uint8)).astype(bool)
     border_fraction = float((border & ~inner).sum() / max(1, border.sum()))
     sigma_random = _sigma_random(fit, region & ~cells, region, erosion, plane, seed)
-    # Extended row ends are inferred, not seen: half their area is one sigma.
-    sigma_random = math.hypot(sigma_random, 0.5 * extended.sum() * plane.res**2)
+    # Completed holes, bridged gaps and extended row ends are inferred, not seen: half their
+    # area is one sigma (the tiles may be there, or an untiled niche may be).
+    sigma_random = math.hypot(sigma_random, 0.5 * completed.sum() * plane.res**2)
     delta = math.hypot(tile_tolerance_mm(tile.source), GROUT_TOLERANCE_MM)
     area_m2 = area_mm2 / 1e6
     return AreaResult(

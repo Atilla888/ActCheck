@@ -237,3 +237,26 @@ def test_tiled_floor_not_counted_without_floor_mask(seed):
     floor, _ = extra_plane(render, "floor", 1500, seed=seed)
     _, area = run(wall, detections=fake_detections(render, seed=seed) + floor)
     assert area.tiled_area_m2 == pytest.approx(render.tiled_area_m2, rel=0.03)
+
+
+def test_completed_area_widens_sigma_and_is_capped():
+    # Large-format tiles; a missing patch may be an untiled niche, not missed tiles.
+    wall = SyntheticWall(wall_w_mm=3600, wall_h_mm=3000, tile_w_mm=600, tile_h_mm=600, seed=91)
+    render = render_wall(wall)
+    detections = fake_detections(render, seed=91)
+    cell = 0.602 * 0.602
+
+    def without(block):
+        return [
+            d
+            for d in detections
+            if not d["truth"] or (d["truth"]["i"], d["truth"]["j"]) not in block
+        ]
+
+    _, full = run(wall, detections=detections)
+    _, one = run(wall, detections=without({(2, 2)}))  # filled in, but it might be a niche
+    assert one.tiled_area_m2 == pytest.approx(full.tiled_area_m2, abs=0.05 * cell)
+    assert one.sigma_random_m2 >= math.hypot(full.sigma_random_m2, 0.45 * cell)  # quadrature
+    _, two = run(wall, detections=without({(2, 2), (3, 2)}))  # 0.72 m2: never filled in
+    assert two.tiled_area_m2 == pytest.approx(render.visible_tiled_area_m2 - 2 * cell, rel=0.02)
+    assert two.undetected_m2 == pytest.approx(2 * cell, rel=0.1)
