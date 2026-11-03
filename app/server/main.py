@@ -12,8 +12,10 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Annotated, Literal
 
+import httpx
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.staticfiles import StaticFiles
+from openai import OpenAI
 from pydantic import BaseModel
 
 from agent.config import get_settings
@@ -43,9 +45,30 @@ pool = ThreadPoolExecutor(max_workers=2)
 
 
 @app.get("/api/health")
-def health() -> dict:
+def health(probe: bool = False) -> dict:
+    """probe=1 also asks the Meta API which models this server can reach (one tiny call)."""
     s = get_settings()
-    return {"ok": True, "model_key": bool(s.meta_api_key or s.baseten_api_key)}
+    result = {"ok": True, "model_key": bool(s.meta_api_key or s.baseten_api_key)}
+    if probe and s.meta_api_key:
+        client = OpenAI(
+            base_url=s.meta_api_base_url, api_key=s.meta_api_key.get_secret_value(), timeout=30
+        )
+        try:
+            result["models"] = sorted(m.id for m in client.models.list())
+        except Exception as error:
+            result["models"] = f"{type(error).__name__}: {str(error)[:200]}"
+        try:
+            client.chat.completions.create(
+                model=s.meta_spark_model, messages=[{"role": "user", "content": "ok"}], max_tokens=3
+            )
+            result["spark"] = "ok"
+        except Exception as error:
+            result["spark"] = f"{type(error).__name__}: {str(error)[:200]}"
+        try:
+            result["egress_ip"] = httpx.get("https://api.ipify.org", timeout=10).text
+        except Exception:
+            result["egress_ip"] = None
+    return result
 
 
 @app.get("/api/sample")
