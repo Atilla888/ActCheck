@@ -104,8 +104,12 @@ export async function startInspection(project: Project, locale: Locale) {
 }
 
 // null: the server no longer knows the job (it restarted; jobs live in memory).
-export async function getInspection(id: string): Promise<Job | null> {
-  const response = await fetch(`/api/inspections/${id}`)
+export async function getInspection(
+  id: string,
+  locale?: Locale
+): Promise<Job | null> {
+  const query = locale ? `?lang=${locale}` : ""
+  const response = await fetch(`/api/inspections/${id}${query}`)
   if (response.status === 404) return null
   return json<Job>(response)
 }

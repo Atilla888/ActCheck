@@ -30,9 +30,17 @@ export function NewProjectDialog({
   onOpenChange: (open: boolean) => void
   onCreate: (project: Project) => void
 }) {
-  const { t } = useI18n()
+  const { t, number } = useI18n()
 
   const [error, setError] = useState("")
+  // Both sides under 10 cm usually means centimetres typed as millimetres.
+  const [small, setSmall] = useState<Project | null>(null)
+  function create(project: Project) {
+    onCreate(project)
+    setError("")
+    setSmall(null)
+    onOpenChange(false)
+  }
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const data = new FormData(event.currentTarget)
@@ -53,7 +61,7 @@ export function NewProjectDialog({
       )
       return
     }
-    onCreate({
+    const project: Project = {
       id: `AC-${crypto.randomUUID().slice(0, 6).toUpperCase()}`,
       name,
       location: String(data.get("location") ?? "").trim(),
@@ -62,9 +70,13 @@ export function NewProjectDialog({
       example: false,
       files: [],
       notes: "",
-    })
-    setError("")
-    onOpenChange(false)
+    }
+    if (tileWidth < 100 && tileHeight < 100) {
+      setError("")
+      setSmall(project)
+      return
+    }
+    create(project)
   }
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -146,6 +158,49 @@ export function NewProjectDialog({
               <p role="alert" className="form-error">
                 {t(error)}
               </p>
+            )}
+            {small && (
+              <Alert role="alert">
+                <Info />
+                <AlertTitle>
+                  {t(
+                    "{width} × {height} mm is a mosaic. Did you mean centimetres?",
+                    {
+                      width: number(small.tileWidth),
+                      height: number(small.tileHeight),
+                    }
+                  )}
+                </AlertTitle>
+                <AlertDescription>
+                  <div className="analysis-actions">
+                    <Button
+                      type="button"
+                      onClick={() =>
+                        create({
+                          ...small,
+                          tileWidth: small.tileWidth * 10,
+                          tileHeight: small.tileHeight * 10,
+                        })
+                      }
+                    >
+                      {t("Use {width} × {height} mm", {
+                        width: number(small.tileWidth * 10),
+                        height: number(small.tileHeight * 10),
+                      })}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => create(small)}
+                    >
+                      {t("Keep {width} × {height} mm", {
+                        width: number(small.tileWidth),
+                        height: number(small.tileHeight),
+                      })}
+                    </Button>
+                  </div>
+                </AlertDescription>
+              </Alert>
             )}
           </FieldGroup>
           <DialogFooter className="form-footer">

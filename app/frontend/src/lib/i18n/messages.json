@@ -1522,5 +1522,17 @@
   "Copy them from the box label: every area is computed from this size. Projects and files stay in this browser tab and are cleared on reload.": {
     "ru": "Перепишите размер с этикетки коробки: все площади считаются от него. Проверки и файлы хранятся в этой вкладке и удаляются при перезагрузке.",
     "kk": "Өлшемді қорап жапсырмасынан көшіріңіз: барлық аудан осы өлшемнен есептеледі. Тексерулер мен файлдар осы қойындыда сақталады және қайта жүктегенде өшеді."
+  },
+  "{width} × {height} mm is a mosaic. Did you mean centimetres?": {
+    "ru": "{width} × {height} мм — это мозаика. Может, вы ввели сантиметры?",
+    "kk": "{width} × {height} мм — бұл мозаика. Сантиметр енгізген жоқсыз ба?"
+  },
+  "Use {width} × {height} mm": {
+    "ru": "Да, {width} × {height} мм",
+    "kk": "Иә, {width} × {height} мм"
+  },
+  "Keep {width} × {height} mm": {
+    "ru": "Нет, оставить {width} × {height} мм",
+    "kk": "Жоқ, {width} × {height} мм қалдыру"
   }
 }

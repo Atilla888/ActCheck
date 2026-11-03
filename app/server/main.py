@@ -19,7 +19,7 @@ from openai import OpenAI
 from pydantic import BaseModel
 
 from agent.config import get_settings
-from agent.pipeline import inspect
+from agent.pipeline import Inspection, inspect, translate
 from agent.planner import Lang
 from app.server import sample
 from app.server.files import JOBS_DIR, act_pages, save_upload, to_view
@@ -41,6 +41,7 @@ class Job(BaseModel):
 
 app = FastAPI(title="ActCheck", docs_url="/api/docs", openapi_url="/api/openapi.json")
 jobs: dict[str, Job] = {}
+done: dict[str, tuple[Inspection, list[Path]]] = {}  # finished jobs, to re-render in a language
 pool = ThreadPoolExecutor(max_workers=2)
 
 
@@ -94,6 +95,7 @@ def _run(job: Job, folder: Path, pages: list[Path], walls, tile, lang: Lang | No
             on_step=step,
         )
         job.result = to_view(insp, pages)
+        done[job.id] = insp, pages
         job.status = "done"
     except Exception as err:  # reported to the client; the server keeps running
         log.exception("inspection %s failed", job.id)
@@ -134,10 +136,15 @@ async def create_inspection(
 
 
 @app.get("/api/inspections/{job_id}")
-def get_inspection(job_id: str) -> Job:
+def get_inspection(job_id: str, lang: Lang | None = None) -> Job:
+    """`lang` re-renders a finished result's plans and protocol in that language."""
     if job_id not in jobs:
         raise HTTPException(404, "Unknown inspection (the server may have restarted)")
-    return jobs[job_id]
+    job = jobs[job_id]
+    if lang is None or job_id not in done:
+        return job
+    insp, pages = done[job_id]
+    return job.model_copy(update={"result": to_view(translate(insp, lang), pages)})
 
 
 JOBS_DIR.mkdir(parents=True, exist_ok=True)

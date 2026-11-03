@@ -264,7 +264,7 @@ function App() {
     if (!pendingKey) return
     const timer = window.setInterval(() => {
       for (const id of pendingKey.split(",")) {
-        getInspection(id)
+        getInspection(id, locale)
           .then((job) =>
             setProjects((items) =>
               items.map((item) =>
@@ -293,7 +293,28 @@ function App() {
       }
     }, 1500)
     return () => window.clearInterval(timer)
-  }, [pendingKey, t])
+  }, [pendingKey, t, locale])
+  // The protocol is written on the server; fetch finished ones again in the new language.
+  const doneKey = projects
+    .filter((item) => item.job?.status === "done")
+    .map((item) => item.job?.id)
+    .join()
+  const shownLocale = useRef(locale)
+  useEffect(() => {
+    if (shownLocale.current === locale) return
+    shownLocale.current = locale
+    for (const id of doneKey ? doneKey.split(",") : [])
+      getInspection(id, locale)
+        .then((job) => {
+          if (!job?.result) return
+          setProjects((items) =>
+            items.map((item) =>
+              item.job?.id === id ? { ...item, analysis: job.result } : item
+            )
+          )
+        })
+        .catch(() => undefined)
+  }, [locale, doneKey])
   async function runAnalysis() {
     const target = project
     try {

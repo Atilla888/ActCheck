@@ -71,6 +71,14 @@ def test_inspection_job(monkeypatch):
     assert job["result"]["act_pages"] == [f"/api/files/jobs/{job_id}/act/00.jpg"]
     assert calls["walls"] == [("wall_1", str(JOBS_DIR / job_id / "walls/00.png"))]
     assert (calls["tile"].width_mm, calls["tile"].height_mm) == (300, 150)
+    summaries = {
+        lang: client.get(f"/api/inspections/{job_id}", params={"lang": lang}).json()["result"][
+            "protocol"
+        ]["summary"]
+        for lang in ("ru", "en")
+    }
+    assert summaries["ru"] != summaries["en"]
+    assert "Камерой" in summaries["ru"] and "camera" in summaries["en"]
 
 
 def test_unknown_job():
