@@ -1,5 +1,6 @@
 """Shared SAM client: benchmark-compatible cache keys and key-free cached segmentation."""
 
+import asyncio
 import json
 import time
 
@@ -96,3 +97,35 @@ def test_single_worker_setting_converts_inline(monkeypatch):
     monkeypatch.setattr(sam, "ProcessPoolExecutor", None)  # would fail if used
     monkeypatch.setattr(sam, "_convert_response", lambda args: [args])
     assert sam._convert_all([("a",), ("b",)]) == [[("a",)], [("b",)]]
+
+
+def _jobs(n=1):
+    return [{"data": b"x", "prompt": "tile"} for _ in range(n)]
+
+
+def test_stalled_request_is_retried(monkeypatch):
+    calls = []
+
+    async def fetch(client, settings, data, prompt, *, cache_dir):
+        calls.append(prompt)
+        if len(calls) == 1:
+            await asyncio.sleep(10)  # stalled connection
+
+    monkeypatch.setattr(sam, "fetch", fetch)
+    monkeypatch.setattr(sam, "ATTEMPT_TIMEOUT", 0.05)
+    asyncio.run(sam._fetch_all(_jobs(), object(), keyless_settings(), "unused"))
+    assert len(calls) == 2
+
+
+def test_persistent_failure_gives_up(monkeypatch):
+    calls = []
+
+    async def fetch(client, settings, data, prompt, *, cache_dir):
+        calls.append(prompt)
+        raise RuntimeError("Stream did not complete")
+
+    monkeypatch.setattr(sam, "fetch", fetch)
+    monkeypatch.setattr(sam, "ATTEMPTS", 2)
+    with pytest.raises(sam.SegmentationError, match="after 2 attempts"):
+        asyncio.run(sam._fetch_all(_jobs(), object(), keyless_settings(), "unused"))
+    assert len(calls) == 2

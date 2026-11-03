@@ -6,10 +6,12 @@ a number exists but part of the wall is outside the photo, unrecognised or loose
 """
 
 import hashlib
+import logging
 import math
 import os
 import re
 from collections.abc import Callable, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
@@ -29,12 +31,15 @@ from schemas.measure import (
     WallMeasurement,
 )
 
+log = logging.getLogger(__name__)
+
 DEFAULT_EXCLUDE = ("door", "mirror", "window", "bathtub")
 BLOCKING = ("floor",)
 MAX_RESIDUAL = 0.25  # of the tile size in pixels: no consistent lattice
 HIGH_RESIDUAL = 0.08  # loosely fitted: lens distortion, uneven wall or mixed planes
 OUT_OF_FRAME = 0.02  # share of the counted outline lying on the photo border
 UNDETECTED_SHARE = 0.05  # unrecognised wall area relative to the counted area
+ROOM_WORKERS = 4  # walls measured at once; each already sends 6 SAM requests in parallel
 PARTIAL_WARNINGS = {"wall_out_of_frame", "undetected_area", "high_residual"}
 
 Segmenter = Callable[[Image.Image, Sequence[str]], sam_client.Segmentation]
@@ -99,7 +104,8 @@ def analyze_wall(
                 raise
             segmentation = segment(image, ())
             warnings.append("exclusions_unavailable")
-    except sam_client.SegmentationError:
+    except sam_client.SegmentationError as error:
+        log.warning("%s: segmentation failed: %s", wall_id, error)
         return unavailable(["segmentation_failed"])
     except Exception as error:  # never let one wall crash the agent's room
         return unavailable([f"internal_error:{type(error).__name__}"])
@@ -170,10 +176,16 @@ def measure_room(
     segmenter: Segmenter | None = None,
 ) -> RoomMeasurement:
     """Random sigmas add in quadrature, systematic (tile tolerance) ones linearly."""
-    results = [
-        measure_wall(path, tile, wall_id, output_dir=output_dir, segmenter=segmenter)
-        for wall_id, path in walls
-    ]
+    # Walls are independent and mostly wait on SAM, so they run side by side; order is kept.
+    with ThreadPoolExecutor(max_workers=max(1, min(ROOM_WORKERS, len(walls)))) as pool:
+        results = list(
+            pool.map(
+                lambda wall: measure_wall(
+                    wall[1], tile, wall[0], output_dir=output_dir, segmenter=segmenter
+                ),
+                walls,
+            )
+        )
     counted = [w for w in results if w.tiled_area_m2 is not None]
     hidden = sum(r.area_m2 for w in results for r in w.excluded if r.reason == "not_visible")
     unverified = [w.wall_id for w in results if w.status != "measured"]

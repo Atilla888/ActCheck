@@ -21,7 +21,7 @@ from multiprocessing import get_context
 from pathlib import Path
 
 import meta_sam_parser as msp
-from openai import APIConnectionError, APIStatusError, AsyncOpenAI
+from openai import APIConnectionError, APIStatusError, AsyncOpenAI, Timeout
 from PIL import Image, ImageOps
 from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -35,6 +35,12 @@ OFFICIAL_BASE_URL = "https://api.meta.ai/v1"
 TILE_PROMPT = "tile"
 MAX_SIDE = 1600
 CONCURRENCY = 6
+# A healthy request streams back in 1-6 s; a stalled connection used to hang until the 240 s
+# timeout and fail the whole wall. Fail fast on connect, bound each attempt, retry transient errors.
+CONNECT_TIMEOUT = 10
+ATTEMPT_TIMEOUT = 60
+ATTEMPTS = 3
+RETRY_STATUS = {408, 409, 429, 500, 502, 503, 504}
 METADATA = {"include_confidence": "true", "mask_encoding": "lossless"}
 CONVERT_VERSION = hashlib.sha256(Path(crop_merge.__file__).read_bytes()).hexdigest()
 
@@ -284,7 +290,7 @@ async def _fetch_missing(missing, client, settings, cache_dir):
     async with AsyncOpenAI(
         api_key=settings.meta_api_key.get_secret_value(),
         base_url=settings.meta_api_base_url,
-        timeout=180,
+        timeout=Timeout(ATTEMPT_TIMEOUT, connect=CONNECT_TIMEOUT),
         max_retries=0,
     ) as owned:
         return await _fetch_all(missing, owned, settings, cache_dir)
@@ -295,15 +301,24 @@ async def _fetch_all(missing, client, settings, cache_dir):
 
     async def one(job):
         async with limit:
-            try:
-                await asyncio.wait_for(
-                    fetch(client, settings, job["data"], job["prompt"], cache_dir=cache_dir),
-                    timeout=240,
-                )
-            except APIStatusError as error:
-                status = error.status_code
-                raise SegmentationError(f"SAM request rejected (HTTP {status})") from None
-            except (APIConnectionError, TimeoutError, RuntimeError) as error:
-                raise SegmentationError(f"SAM request failed ({type(error).__name__})") from None
+            for attempt in range(ATTEMPTS):
+                last = attempt == ATTEMPTS - 1
+                try:
+                    await asyncio.wait_for(
+                        fetch(client, settings, job["data"], job["prompt"], cache_dir=cache_dir),
+                        timeout=ATTEMPT_TIMEOUT,
+                    )
+                    return
+                except APIStatusError as error:
+                    status = error.status_code
+                    if status not in RETRY_STATUS or last:
+                        raise SegmentationError(f"SAM request rejected (HTTP {status})") from None
+                except (APIConnectionError, TimeoutError, RuntimeError) as error:
+                    if last:
+                        name = type(error).__name__
+                        raise SegmentationError(
+                            f"SAM request failed after {ATTEMPTS} attempts ({name})"
+                        ) from None
+                await asyncio.sleep(2**attempt)
 
     await asyncio.gather(*(one(job) for job in missing))
