@@ -59,6 +59,7 @@ and [`room_example.json`](../data/samples/room_example.json) with their overlays
 | --- | --- | --- |
 | `wall_out_of_frame` | partial | The counted tiles reach (or come within half a tile of) the photo edge: step back so the whole tiled wall plus a margin is in the photo |
 | `uncounted_tiles` | partial | Tiles seem to continue beyond the counted area (missed by segmentation) and could hold more than half the 2(σr + σs) bound: retake in even light, closer |
+| `other_surface` | partial | Part of the wall does not look like this tile (a panel, other tile, glare): it is not counted, only allowed for. Check it, or photograph it separately |
 | `undetected_area` | partial | Part of the wall was not recognised (glare, cover): retake in even light |
 | `high_residual` | partial | Joints don't fit one flat grid: main camera 1×, frontal, one wall per photo |
 | `merged_tiles` | — | Informational: SAM merged neighbouring tiles; the lattice compensates |

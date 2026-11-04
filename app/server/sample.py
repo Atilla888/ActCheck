@@ -1,5 +1,6 @@
 """The "try a sample" inspection: the synthetic act from scripts/make_demo.py checked against B's
-stored SAM measurement of a synthetic wall. Runs the real agent, no model calls, no cost."""
+stored measurement of a synthetic wall (simulated masks, not SAM). Runs the real agent, no model
+calls, no cost."""
 
 import json
 import math

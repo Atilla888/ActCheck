@@ -43,6 +43,7 @@ WARNING_TEXT = {
     "exclusions_unavailable": "doors, mirrors and bathtubs could not be checked",
     "exclusion_overlaps_tiles": "a door, window or mirror was detected over visible tiles",
     "uncounted_tiles": "tiles seem to continue beyond the counted area",
+    "other_surface": "part of the wall does not look like this tile",
 }
 
 
@@ -219,20 +220,15 @@ def _tile_polygon(fit, tile, scale):
 def _draw_measurement(layer, fit, area, scale, count):
     size = layer.size
     layer.paste(Image.new("RGBA", size, AMBER + (70,)), mask=_even_odd(area.region_px, size, scale))
+    captions = []
     for label, polygons in area.excluded_px.items():
         shade = _even_odd(polygons, size, scale)
         layer.paste(Image.new("RGBA", size, GREY + (165,)), mask=shade)
-        found = np.argwhere(np.asarray(shade) > 0)
-        if len(found):
-            y, x = found.mean(axis=0)
+        anchor = _largest_part_center(np.asarray(shade) > 0)
+        if anchor is not None:
             value = sum(r.area_m2 for r in area.excluded if r.label == label)
             name = "not detected" if label == "undetected" else label.replace("_", " ")
-            text = _text(f"{name} {value:.2f} m²")
-            font = _font(max(size) * 0.018)
-            ImageDraw.Draw(layer).text(
-                (x, y), text, fill=WHITE + (255,), font=font, anchor="mm", stroke_width=2,
-                stroke_fill=INK + (255,),
-            )  # fmt: skip
+            captions.append((anchor, _text(f"{name} {value:.2f} m²")))
     draw = ImageDraw.Draw(layer)
     ordered = sorted(fit.tiles, key=lambda t: (t.j, t.i))
     label_size = np.clip(fit.tile_px * scale * 0.32, 9, 22)
@@ -254,6 +250,24 @@ def _draw_measurement(layer, fit, area, scale, count):
         points = _points(polygon, scale)
         if len(points) > 1:
             draw.line(points + [points[0]], fill=WHITE + (255,), width=width)
+    # Last, so tiles cannot hide them; kept inside the photo.
+    font = _font(max(size) * 0.018)
+    for (x, y), text in captions:
+        left, top, right, bottom = draw.textbbox((0, 0), text, font=font, stroke_width=2)
+        half_w, half_h = (right - left) / 2 + 2, (bottom - top) / 2 + 2
+        x = min(max(x, half_w), max(half_w, size[0] - half_w))
+        y = min(max(y, half_h), max(half_h, size[1] - half_h))
+        draw.text((x, y), text, fill=WHITE + (255,), font=font, anchor="mm", stroke_width=2,
+                  stroke_fill=INK + (255,))  # fmt: skip
+
+
+def _largest_part_center(mask):
+    """Centre of the largest connected part; the centre of them all may lie on the tiles."""
+    count, labels, stats, centroids = cv2.connectedComponentsWithStats(mask.astype(np.uint8))
+    if count < 2:
+        return None
+    largest = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
+    return tuple(centroids[largest])
 
 
 def _dashed(draw, points, color, dash=8.0):

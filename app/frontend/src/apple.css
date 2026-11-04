@@ -356,10 +356,20 @@ h1[tabindex="-1"]:focus {
   border-radius: 14px;
   overflow: hidden;
 }
+/* The whole overlay must show: its caption with the area sits along the bottom edge. */
+.evidence-image:has(.measured-overlay),
+.photo-dialog .evidence-image:has(.measured-overlay) {
+  display: flex;
+  justify-content: center;
+  height: auto;
+  aspect-ratio: auto;
+}
 .evidence-image .measured-overlay,
 .measured-overlay {
+  width: auto;
   max-width: 100%;
   height: auto;
+  max-height: 70vh;
   object-fit: contain;
 }
 .wall-details .eyebrow {

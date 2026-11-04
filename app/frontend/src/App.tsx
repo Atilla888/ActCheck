@@ -505,7 +505,7 @@ function App() {
                 <Camera />
                 <span>
                   <strong>{t("Room evidence")}</strong>
-                  <small>{t("Synthetic wall · measured by SAM 3.1")}</small>
+                  <small>{t("Synthetic wall · simulated masks")}</small>
                 </span>
                 <span className="file-action">
                   JPG <ArrowUpRight size={16} />
@@ -1123,7 +1123,7 @@ function App() {
               ActCheck <span aria-hidden="true">/</span>{" "}
               {t("Renovation inspections")}
             </span>
-            <span>{t("Files stay on this device")}</span>
+            <span>{t("Files are sent only when you run an analysis")}</span>
           </footer>
         </main>
         <NewProjectDialog

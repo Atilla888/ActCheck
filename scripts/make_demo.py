@@ -1,6 +1,6 @@
 # ruff: noqa: E501 — document text reads better unwrapped
-"""Build the "try a sample" inspection: a synthetic act that matches B's real SAM measurement of a
-synthetic wall (data/samples/measure_example.*). Output: data/samples/demo/.
+"""Build the "try a sample" inspection: a synthetic act that matches B's measurement of a synthetic
+wall from simulated masks (data/samples/measure_example.*). Output: data/samples/demo/.
 
 The act over-bills wall tiling (6.2 m2 billed, the photo supports at most ~4.2 m2 including the
 area hidden by the bathtub) and has one arithmetic error (grout line).

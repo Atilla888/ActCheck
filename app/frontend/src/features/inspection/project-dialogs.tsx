@@ -360,10 +360,12 @@ export function UploadDialog({
         </div>
         <Alert>
           <Info />
-          <AlertTitle>{t("Files stay on your device")}</AlertTitle>
+          <AlertTitle>
+            {t("Nothing is sent until you run the analysis")}
+          </AlertTitle>
           <AlertDescription>
             {t(
-              "They are sent to the server only when you run the analysis. JPG, PNG, WebP or PDF, 20 MB per file, up to 12 files."
+              "Then the files go to our server and the Meta Model API. JPG, PNG, WebP or PDF, 20 MB per file, up to 12 files."
             )}
           </AlertDescription>
         </Alert>
