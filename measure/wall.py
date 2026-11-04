@@ -19,7 +19,7 @@ from pathlib import Path
 from PIL import Image, ImageOps, UnidentifiedImageError
 
 from measure import sam_client
-from measure.area import AreaResult, measure_area
+from measure.area import OTHER_SURFACE, AreaResult, measure_area
 from measure.lattice import LatticeFit, fit_lattice
 from measure.overlay import render_failure, render_objects, render_overlay
 from schemas.measure import (
@@ -45,6 +45,7 @@ HIGH_RESIDUAL = 0.08  # loosely fitted: lens distortion, uneven wall or mixed pl
 OUT_OF_FRAME = 0.02  # share of the counted outline lying on the photo border
 UNDETECTED_SHARE = 0.05  # unrecognised wall area relative to the counted area
 ROOM_WORKERS = 4  # walls measured at once; each already sends 6 SAM requests in parallel
+OTHER_SHARE = 0.01  # other-surface area relative to the counted area worth telling the user
 BORDER_GAP = 0.5  # tiles: a counted outline this close to the photo edge may continue beyond it
 UNCOUNTED_SHARE = 0.5  # of the 2(σr + σs) bound: tiles that seem to continue past the count
 CONFLICT_SHARE = 0.1  # matched tiles under a door/window/mirror mask: the masks are unreliable
@@ -55,6 +56,7 @@ PARTIAL_WARNINGS = {
     "exclusion_overlaps_tiles",
     "exclusions_unavailable",  # no hidden-area allowance, and compare.py ignores warnings
     "uncounted_tiles",
+    "other_surface",  # may be tiled too: allowed for, so a wall with much of it stays partial
 }
 
 Segmenter = Callable[[Image.Image, Sequence[str]], sam_client.Segmentation]
@@ -150,6 +152,11 @@ def analyze_wall(
         bound = 2 * (area.sigma_random_m2 + area.sigma_system_m2)
         if area.uncounted_m2 > UNCOUNTED_SHARE * bound:
             warnings.append("uncounted_tiles")
+        other = sum(r.area_m2 for r in area.excluded if r.label == OTHER_SURFACE)
+        # Together: an other-surface mask can claim part of an unrecognised gap.
+        large = other > OTHER_SHARE * area.tiled_area_m2
+        if large and other + area.undetected_m2 > UNDETECTED_SHARE * area.tiled_area_m2:
+            warnings.append("other_surface")
         if area.undetected_m2 > UNDETECTED_SHARE * area.tiled_area_m2:
             warnings.append("undetected_area")
         if fit.residual_px > HIGH_RESIDUAL * fit.tile_px:

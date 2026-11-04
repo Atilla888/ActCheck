@@ -19,6 +19,12 @@ const warningText: Record<string, string> = {
     "Step back so the whole tiled wall plus a margin is in the photo.",
   undetected_area:
     "Part of the wall was not recognised (glare, cover). Retake in even light.",
+  other_surface:
+    "Part of the wall doesn't look like this tile (a panel, other tile, glare). It isn't counted, only allowed for.",
+  uncounted_tiles:
+    "Tiles seem to continue beyond the counted area. Retake it closer, in even light.",
+  exclusion_overlaps_tiles:
+    "A door, window or mirror was detected over visible tiles. The tiles are still counted.",
   high_residual:
     "The joints don't fit one flat grid. Use the main camera at 1×, straight on, one wall per photo.",
   too_few_tiles:
@@ -47,6 +53,7 @@ const regionLabel: Record<string, string> = {
   sink: "Sink",
   cabinet: "Cabinet",
   undetected: "Unrecognised area",
+  other_surface: "Other surface",
 }
 
 const reasonLabel: Record<string, string> = {

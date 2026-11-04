@@ -43,6 +43,7 @@ WARNING_TEXT = {
     "exclusions_unavailable": "doors, mirrors and bathtubs could not be checked",
     "exclusion_overlaps_tiles": "a door, window or mirror was detected over visible tiles",
     "uncounted_tiles": "tiles seem to continue beyond the counted area",
+    "other_surface": "part of the wall does not look like this tile",
 }
 
 

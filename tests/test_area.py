@@ -5,6 +5,7 @@ import math
 import cv2
 import numpy as np
 import pytest
+from PIL import Image
 
 from measure.area import GROUT_TOLERANCE_MM, measure_area, tile_tolerance_mm
 from measure.lattice import fit_lattice
@@ -271,3 +272,40 @@ def test_door_mask_spilling_over_tiles_keeps_them(tile, spill):
     door = wall_block(render, 800 - spill, 100 - spill, 1600 + spill, 2100, "door")
     _, area = run(wall, concepts={"door": [door]})
     assert area.tiled_area_m2 == pytest.approx(render.tiled_area_m2, rel=0.02)
+
+
+def _surface_beside_wall(wall, color):
+    """A wall with a tile-sized mask of `color` on the lattice just past its last column."""
+    render = render_wall(wall)
+    detections = fake_detections(render, seed=wall.seed)
+    fit = fit_lattice(detections, spec(wall))
+    last = max(fit.tiles, key=lambda t: t.i)
+    x0, y0, x1, y1 = fit.cell_rect(last.i + 1, last.j)
+    polygon = fit.to_image([[x0 + 5, y0 + 5], [x1 - 5, y0 + 5], [x1 - 5, y1 - 5], [x0 + 5, y1 - 5]])
+    size = (render.image.shape[1], render.image.shape[0])
+    image = render.image.copy()
+    cv2.fillPoly(image, [np.round(polygon).astype(np.int32)], color)
+    return fit, [*detections, fake_concept(polygon, "tile", size)], size, Image.fromarray(image)
+
+
+def test_other_surface_is_allowed_for_not_counted():
+    wall = SyntheticWall(tile_w_mm=200, tile_h_mm=200, fill=0.7, seed=31)
+    fit, detections, size, image = _surface_beside_wall(wall, (20, 60, 200))
+    counted = measure_area(fit, detections, size, spec(wall))
+    area = measure_area(fit, detections, size, spec(wall), image=image)
+    assert counted.tiled_area_m2 - area.tiled_area_m2 == pytest.approx(0.04, abs=0.01)
+    other = [r for r in area.excluded if r.label == "other_surface"]
+    assert len(other) == 1
+    assert other[0].reason == "not_visible"
+    assert other[0].area_m2 == pytest.approx(0.04, abs=0.01)
+
+
+def test_same_coloured_tile_stays_counted():
+    wall = SyntheticWall(tile_w_mm=200, tile_h_mm=200, fill=0.7, seed=31)
+    render = render_wall(wall)
+    fit = fit_lattice(fake_detections(render, seed=wall.seed), spec(wall))
+    x, y = fit.tiles[0].center.astype(int)
+    colour = tuple(int(c) for c in render.image[y, x])
+    fit, detections, size, image = _surface_beside_wall(wall, colour)
+    area = measure_area(fit, detections, size, spec(wall), image=image)
+    assert not [r for r in area.excluded if r.label == "other_surface"]
