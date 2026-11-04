@@ -131,7 +131,7 @@ export const walls = [
 
 export const statusLabels: Record<ReviewStatus, string> = {
   review: "Needs review",
-  matched: "Within range",
+  matched: "No overbilling found",
   unverified: "Not verifiable",
   incomplete: "Needs more evidence",
 }

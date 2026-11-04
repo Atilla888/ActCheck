@@ -82,3 +82,10 @@ def inspect(
     return Inspection(
         act=act, plans=plans, arithmetic_issues=issues, room=room, counts=counts, protocol=protocol
     )
+
+
+def translate(insp: Inspection, lang: Lang) -> Inspection:
+    """The same inspection with plans and protocol written in `lang`; no model calls."""
+    plans = plan(insp.act, lang)
+    protocol = build_protocol(insp.act, plans, insp.arithmetic_issues, insp.room, insp.counts, lang)
+    return insp.model_copy(update={"plans": plans, "protocol": protocol})

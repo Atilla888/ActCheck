@@ -503,10 +503,6 @@
     "ru": "Нужна проверка",
     "kk": "Тексеру қажет"
   },
-  "Within range": {
-    "ru": "В пределах погрешности",
-    "kk": "Қателік шегінде"
-  },
   "Not verifiable": {
     "ru": "Нельзя проверить",
     "kk": "Тексеру мүмкін емес"
@@ -683,10 +679,6 @@
     "ru": "Высота плитки, мм",
     "kk": "Плитка биіктігі, мм"
   },
-  "Use the dimensions on the box label. Projects and files stay in this browser tab and are cleared on reload.": {
-    "ru": "Используйте размеры с этикетки. Проекты и файлы остаются в этой вкладке и удаляются при перезагрузке.",
-    "kk": "Жапсырмадағы өлшемдерді пайдаланыңыз. Жобалар мен файлдар осы қойындыда сақталып, бет жаңартылғанда жойылады."
-  },
   "Cancel": {
     "ru": "Отмена",
     "kk": "Бас тарту"
@@ -694,10 +686,6 @@
   "Create inspection": {
     "ru": "Создать проверку",
     "kk": "Тексеру жасау"
-  },
-  "Include the work statement, tile box label, and one photo per wall.": {
-    "ru": "Добавьте акт, этикетку плитки и по одному фото каждой стены.",
-    "kk": "Актіні, плитка жапсырмасын және әр қабырғаның бір суретін қосыңыз."
   },
   "Choose evidence files": {
     "ru": "Выбрать файлы материалов",
@@ -722,10 +710,6 @@
   "Files stay on your device": {
     "ru": "Файлы остаются на устройстве",
     "kk": "Файлдар құрылғыңызда қалады"
-  },
-  "Live analysis is not connected yet. Adding files prepares an inspection; it does not generate measurements.": {
-    "ru": "Анализ ещё не подключён. Файлы подготавливают проверку, но не создают измерений.",
-    "kk": "Талдау әлі қосылмаған. Файл қосу тексеруге дайындайды, бірақ өлшем жасамайды."
   },
   "Done": {
     "ru": "Готово",
@@ -866,10 +850,6 @@
   "Inspection status": {
     "ru": "Статус проверки",
     "kk": "Тексеру күйі"
-  },
-  "Evidence is staged locally. Live analysis is not connected. No measurements, discrepancies, or amounts to clarify have been established.": {
-    "ru": "Материалы добавлены локально. Анализ не подключён. Измерения, расхождения и суммы к уточнению не определены.",
-    "kk": "Материалдар жергілікті түрде қосылған. Талдау қосылмаған. Өлшемдер, айырмалар және нақтылайтын сомалар анықталмаған."
   },
   "Evidence manifest": {
     "ru": "Список материалов",
@@ -1502,5 +1482,57 @@
   "Mark the photo of the statement as “Statement page” in the list above.": {
     "ru": "Отметьте фото акта как «Страница акта» в списке выше.",
     "kk": "Жоғарыдағы тізімде акт суретін «Акт беті» деп белгілеңіз."
+  },
+  "Add the work statement and one photo per wall, each with its own button.": {
+    "ru": "Добавьте акт и по одному фото на каждую стену — у каждого своя кнопка.",
+    "kk": "Актіні және әр қабырғаға бір фотодан қосыңыз — әрқайсысының өз түймесі бар."
+  },
+  "Statement pages": {
+    "ru": "Страницы акта",
+    "kk": "Акт беттері"
+  },
+  "Photo or PDF of the work statement": {
+    "ru": "Фото или PDF акта выполненных работ",
+    "kk": "Орындалған жұмыстар актісінің фотосы немесе PDF"
+  },
+  "Wall photos": {
+    "ru": "Фото стен",
+    "kk": "Қабырға фотолары"
+  },
+  "One photo per tiled wall, all edges in frame": {
+    "ru": "Одно фото на стену, все края в кадре",
+    "kk": "Әр қабырғаға бір фото, барлық шеттері кадрда"
+  },
+  "They are sent to the server only when you run the analysis. JPG, PNG, WebP or PDF, 20 MB per file, up to 12 files.": {
+    "ru": "Они отправляются на сервер только при запуске анализа. JPG, PNG, WebP или PDF, до 20 МБ на файл, не больше 12 файлов.",
+    "kk": "Олар серверге тек талдауды іске қосқанда жіберіледі. JPG, PNG, WebP немесе PDF, бір файлға 20 МБ дейін, 12 файлдан аспайды."
+  },
+  "The analysis has not been run yet. No measurements, discrepancies, or amounts to clarify have been established.": {
+    "ru": "Анализ ещё не запускался. Замеров, расхождений и сумм к уточнению пока нет.",
+    "kk": "Талдау әлі іске қосылмаған. Өлшемдер, сәйкессіздіктер және нақтыланатын сомалар әзірге жоқ."
+  },
+  "The server restarted and lost this analysis. Run it again.": {
+    "ru": "Сервер перезапустился, и этот анализ потерялся. Запустите его ещё раз.",
+    "kk": "Сервер қайта іске қосылып, бұл талдау жоғалды. Оны қайта іске қосыңыз."
+  },
+  "No overbilling found": {
+    "ru": "Завышения не найдено",
+    "kk": "Асыра есептеу табылмады"
+  },
+  "Copy them from the box label: every area is computed from this size. Projects and files stay in this browser tab and are cleared on reload.": {
+    "ru": "Перепишите размер с этикетки коробки: все площади считаются от него. Проверки и файлы хранятся в этой вкладке и удаляются при перезагрузке.",
+    "kk": "Өлшемді қорап жапсырмасынан көшіріңіз: барлық аудан осы өлшемнен есептеледі. Тексерулер мен файлдар осы қойындыда сақталады және қайта жүктегенде өшеді."
+  },
+  "{width} × {height} mm is a mosaic. Did you mean centimetres?": {
+    "ru": "{width} × {height} мм — это мозаика. Может, вы ввели сантиметры?",
+    "kk": "{width} × {height} мм — бұл мозаика. Сантиметр енгізген жоқсыз ба?"
+  },
+  "Use {width} × {height} mm": {
+    "ru": "Да, {width} × {height} мм",
+    "kk": "Иә, {width} × {height} мм"
+  },
+  "Keep {width} × {height} mm": {
+    "ru": "Нет, оставить {width} × {height} мм",
+    "kk": "Жоқ, {width} × {height} мм қалдыру"
   }
 }

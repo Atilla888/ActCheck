@@ -25,7 +25,7 @@ COPY app/__init__.py app/__init__.py
 COPY app/server app/server
 COPY data/samples/demo data/samples/demo
 COPY --from=web /web/dist app/frontend/dist
-# Mask conversion workers per wall; rooms measure walls in parallel, so keep memory bounded.
+# os.cpu_count() reports the host, not the container; more SAM decode processes run out of memory.
 ENV PATH="/app/.venv/bin:$PATH" ACTCHECK_OUTPUT_DIR=/tmp/actcheck PORT=8000 ACTCHECK_SAM_WORKERS=2
 EXPOSE 8000
 CMD ["sh", "-c", "uvicorn app.server.main:app --host 0.0.0.0 --port ${PORT}"]
