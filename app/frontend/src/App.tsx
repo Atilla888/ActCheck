@@ -264,17 +264,28 @@ function App() {
     if (!pendingKey) return
     const timer = window.setInterval(() => {
       for (const id of pendingKey.split(",")) {
-        getInspection(id)
+        getInspection(id, locale)
           .then((job) =>
             setProjects((items) =>
               items.map((item) =>
-                item.job?.id === job.id
-                  ? {
-                      ...item,
-                      job: { id: job.id, status: job.status, error: job.error },
-                      analysis: job.result ?? item.analysis,
-                    }
-                  : item
+                item.job?.id !== id
+                  ? item
+                  : job
+                    ? {
+                        ...item,
+                        job: { id, status: job.status, error: job.error },
+                        analysis: job.result ?? item.analysis,
+                      }
+                    : {
+                        ...item,
+                        job: {
+                          id,
+                          status: "failed",
+                          error: t(
+                            "The server restarted and lost this analysis. Run it again."
+                          ),
+                        },
+                      }
               )
             )
           )
@@ -282,7 +293,28 @@ function App() {
       }
     }, 1500)
     return () => window.clearInterval(timer)
-  }, [pendingKey])
+  }, [pendingKey, t, locale])
+  // The protocol is written on the server; fetch finished ones again in the new language.
+  const doneKey = projects
+    .filter((item) => item.job?.status === "done")
+    .map((item) => item.job?.id)
+    .join()
+  const shownLocale = useRef(locale)
+  useEffect(() => {
+    if (shownLocale.current === locale) return
+    shownLocale.current = locale
+    for (const id of doneKey ? doneKey.split(",") : [])
+      getInspection(id, locale)
+        .then((job) => {
+          if (!job?.result) return
+          setProjects((items) =>
+            items.map((item) =>
+              item.job?.id === id ? { ...item, analysis: job.result } : item
+            )
+          )
+        })
+        .catch(() => undefined)
+  }, [locale, doneKey])
   async function runAnalysis() {
     const target = project
     try {
@@ -343,7 +375,7 @@ function App() {
       files: item.files.filter((file) => file.id !== id),
     }))
   }
-  async function addFiles(incoming: File[]) {
+  async function addFiles(incoming: File[], role: "act" | "wall") {
     const accepted: LocalFile[] = []
     for (const file of incoming) {
       if (project.files.length + accepted.length >= 12) {
@@ -389,7 +421,13 @@ function App() {
           })
         else if (!(await file.slice(0, 5).text()).startsWith("%PDF-"))
           throw new Error("Unreadable PDF")
-        accepted.push({ id: crypto.randomUUID(), file, url, kind })
+        accepted.push({
+          id: crypto.randomUUID(),
+          file,
+          url,
+          kind,
+          role: kind === "document" ? "act" : role,
+        })
         urls.current.add(url)
       } catch {
         URL.revokeObjectURL(url)

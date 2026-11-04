@@ -1,6 +1,6 @@
 import { useI18n } from "@/lib/i18n"
 import { useRef, useState, type FormEvent } from "react"
-import { Camera, FileText, Info, Upload, X } from "lucide-react"
+import { Camera, FileText, Info, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -30,9 +30,17 @@ export function NewProjectDialog({
   onOpenChange: (open: boolean) => void
   onCreate: (project: Project) => void
 }) {
-  const { t } = useI18n()
+  const { t, number } = useI18n()
 
   const [error, setError] = useState("")
+  // Both sides under 10 cm usually means centimetres typed as millimetres.
+  const [small, setSmall] = useState<Project | null>(null)
+  function create(project: Project) {
+    onCreate(project)
+    setError("")
+    setSmall(null)
+    onOpenChange(false)
+  }
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const data = new FormData(event.currentTarget)
@@ -53,7 +61,7 @@ export function NewProjectDialog({
       )
       return
     }
-    onCreate({
+    const project: Project = {
       id: `AC-${crypto.randomUUID().slice(0, 6).toUpperCase()}`,
       name,
       location: String(data.get("location") ?? "").trim(),
@@ -62,9 +70,13 @@ export function NewProjectDialog({
       example: false,
       files: [],
       notes: "",
-    })
-    setError("")
-    onOpenChange(false)
+    }
+    if (tileWidth < 100 && tileHeight < 100) {
+      setError("")
+      setSmall(project)
+      return
+    }
+    create(project)
   }
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -117,7 +129,7 @@ export function NewProjectDialog({
                   min="10"
                   max="2000"
                   step="0.1"
-                  defaultValue="300"
+                  inputMode="decimal"
                   required
                 />
               </Field>
@@ -132,20 +144,63 @@ export function NewProjectDialog({
                   min="10"
                   max="2000"
                   step="0.1"
-                  defaultValue="600"
+                  inputMode="decimal"
                   required
                 />
               </Field>
             </div>
             <FieldDescription>
               {t(
-                "Use the dimensions on the box label. Projects and files stay in this browser tab and are cleared on reload."
+                "Copy them from the box label: every area is computed from this size. Projects and files stay in this browser tab and are cleared on reload."
               )}
             </FieldDescription>
             {error && (
               <p role="alert" className="form-error">
                 {t(error)}
               </p>
+            )}
+            {small && (
+              <Alert role="alert">
+                <Info />
+                <AlertTitle>
+                  {t(
+                    "{width} × {height} mm is a mosaic. Did you mean centimetres?",
+                    {
+                      width: number(small.tileWidth),
+                      height: number(small.tileHeight),
+                    }
+                  )}
+                </AlertTitle>
+                <AlertDescription>
+                  <div className="analysis-actions">
+                    <Button
+                      type="button"
+                      onClick={() =>
+                        create({
+                          ...small,
+                          tileWidth: small.tileWidth * 10,
+                          tileHeight: small.tileHeight * 10,
+                        })
+                      }
+                    >
+                      {t("Use {width} × {height} mm", {
+                        width: number(small.tileWidth * 10),
+                        height: number(small.tileHeight * 10),
+                      })}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => create(small)}
+                    >
+                      {t("Keep {width} × {height} mm", {
+                        width: number(small.tileWidth),
+                        height: number(small.tileHeight),
+                      })}
+                    </Button>
+                  </div>
+                </AlertDescription>
+              </Alert>
             )}
           </FieldGroup>
           <DialogFooter className="form-footer">
@@ -164,6 +219,31 @@ export function NewProjectDialog({
   )
 }
 
+type Role = "act" | "wall"
+
+const uploadKinds: {
+  role: Role
+  icon: typeof FileText
+  title: string
+  hint: string
+  accept: string
+}[] = [
+  {
+    role: "act",
+    icon: FileText,
+    title: "Statement pages",
+    hint: "Photo or PDF of the work statement",
+    accept: "image/jpeg,image/png,image/webp,application/pdf",
+  },
+  {
+    role: "wall",
+    icon: Camera,
+    title: "Wall photos",
+    hint: "One photo per tiled wall, all edges in frame",
+    accept: "image/jpeg,image/png,image/webp",
+  },
+]
+
 export function UploadDialog({
   open,
   onOpenChange,
@@ -174,21 +254,21 @@ export function UploadDialog({
   open: boolean
   onOpenChange: (open: boolean) => void
   files: LocalFile[]
-  onAdd: (files: File[]) => Promise<void>
+  onAdd: (files: File[], role: Role) => Promise<void>
   onRemove: (id: string) => void
 }) {
   const { t, number } = useI18n()
 
-  const input = useRef<HTMLInputElement>(null)
+  const inputs = useRef<Partial<Record<Role, HTMLInputElement | null>>>({})
   const adding = useRef(false)
-  const [dragging, setDragging] = useState(false)
+  const [dragging, setDragging] = useState<Role | null>(null)
   const [busy, setBusy] = useState(false)
-  async function add(items: File[]) {
+  async function add(items: File[], role: Role) {
     if (adding.current) return
     adding.current = true
     setBusy(true)
     try {
-      await onAdd(items)
+      await onAdd(items, role)
     } finally {
       adding.current = false
       setBusy(false)
@@ -201,52 +281,60 @@ export function UploadDialog({
           <DialogTitle>{t("Add evidence")}</DialogTitle>
           <DialogDescription>
             {t(
-              "Include the work statement, tile box label, and one photo per wall."
+              "Add the work statement and one photo per wall, each with its own button."
             )}
           </DialogDescription>
         </DialogHeader>
-        <input
-          ref={input}
-          type="file"
-          accept="image/jpeg,image/png,image/webp,application/pdf"
-          multiple
-          disabled={busy}
-          className="sr-only"
-          aria-label={t("Choose evidence files")}
-          onChange={(event) => {
-            void add(Array.from(event.target.files ?? []))
-            event.target.value = ""
-          }}
-        />
-        <button
-          className={cn("upload-zone", dragging && "dragging")}
-          disabled={busy}
-          onClick={() => input.current?.click()}
-          onDragOver={(event) => {
-            event.preventDefault()
-            setDragging(true)
-          }}
-          onDragLeave={() => setDragging(false)}
-          onDrop={(event) => {
-            event.preventDefault()
-            setDragging(false)
-            if (!busy) void add(Array.from(event.dataTransfer.files))
-          }}
-        >
-          <span className="upload-icon">
-            <Upload />
-          </span>
-          <strong>
-            {busy ? t("Checking files…") : t("Drop files here, or browse")}
-          </strong>
-          <span>
-            {t("JPG, PNG, WebP or PDF · 20 MB per file · up to 12 files")}
-          </span>
-        </button>
+        <div className="upload-zones">
+          {uploadKinds.map(({ role, icon: Icon, title, hint, accept }) => (
+            <div key={role}>
+              <input
+                ref={(node) => {
+                  inputs.current[role] = node
+                }}
+                type="file"
+                accept={accept}
+                multiple
+                disabled={busy}
+                className="sr-only"
+                aria-label={t(title)}
+                onChange={(event) => {
+                  void add(Array.from(event.target.files ?? []), role)
+                  event.target.value = ""
+                }}
+              />
+              <button
+                className={cn("upload-zone", dragging === role && "dragging")}
+                disabled={busy}
+                onClick={() => inputs.current[role]?.click()}
+                onDragOver={(event) => {
+                  event.preventDefault()
+                  setDragging(role)
+                }}
+                onDragLeave={() => setDragging(null)}
+                onDrop={(event) => {
+                  event.preventDefault()
+                  setDragging(null)
+                  if (!busy)
+                    void add(Array.from(event.dataTransfer.files), role)
+                }}
+              >
+                <span className="upload-icon">
+                  <Icon />
+                </span>
+                <strong>
+                  {t(title)} ·{" "}
+                  {files.filter((item) => item.role === role).length}
+                </strong>
+                <span>{busy ? t("Checking files…") : t(hint)}</span>
+              </button>
+            </div>
+          ))}
+        </div>
         <div className="upload-list" aria-live="polite">
           {files.map((item) => (
             <div key={item.id} className="upload-item">
-              {item.kind === "photo" ? (
+              {item.role === "wall" ? (
                 <Camera size={18} />
               ) : (
                 <FileText size={18} />
@@ -254,8 +342,8 @@ export function UploadDialog({
               <div>
                 <strong>{item.file.name}</strong>
                 <span>
-                  {number(item.file.size / 1024 / 1024, 2)}{" "}
-                  {t("MB · Local file")}
+                  {t(item.role === "wall" ? "Wall photo" : "Statement page")} ·{" "}
+                  {number(item.file.size / 1024 / 1024, 2)} {t("MB")}
                 </span>
               </div>
               <Button
@@ -274,7 +362,7 @@ export function UploadDialog({
           <AlertTitle>{t("Files stay on your device")}</AlertTitle>
           <AlertDescription>
             {t(
-              "Live analysis is not connected yet. Adding files prepares an inspection; it does not generate measurements."
+              "They are sent to the server only when you run the analysis. JPG, PNG, WebP or PDF, 20 MB per file, up to 12 files."
             )}
           </AlertDescription>
         </Alert>
