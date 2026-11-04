@@ -1,0 +1,485 @@
+/*
+ * ActCheck visual layer, after Apple's interface conventions: system type, a grey grouped
+ * canvas with white inset panels, a translucent header, a segmented control for the steps
+ * and pill buttons. The one accent is the teal of the recognised tiles in the measurement
+ * overlay, so the interface and the evidence share a colour. Loaded after index.css; it
+ * changes appearance only.
+ */
+
+:root {
+  --background: #f5f5f7;
+  --foreground: #1d1d1f;
+  --card: #ffffff;
+  --popover: #ffffff;
+  --popover-foreground: #1d1d1f;
+  --primary: #0a7a70;
+  --primary-foreground: #ffffff;
+  --secondary: #e3f2f0;
+  --secondary-foreground: #075e56;
+  --muted: #ececf0;
+  --muted-foreground: #6e6e73;
+  --accent: #ececf0;
+  --border: rgb(60 60 67 / 0.16);
+  --destructive: #d70015;
+  --success: #1f7a37;
+  --success-bg: #e8f5ec;
+  --success-border: transparent;
+  --warning: #a14d00;
+  --warning-bg: #fff2e0;
+  --warning-border: transparent;
+  --surface-subtle: #f5f5f7;
+  --surface-highlight: #eef7f6;
+  --radius: 12px;
+  --stage: #1d1d1f;
+  --header-glass: rgb(245 245 247 / 0.78);
+  --panel-radius: 18px;
+  --system:
+    -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Inter",
+    "Helvetica Neue", system-ui, sans-serif;
+}
+.dark {
+  --background: #000000;
+  --foreground: #f5f5f7;
+  --card: #1c1c1e;
+  --popover: #2c2c2e;
+  --popover-foreground: #f5f5f7;
+  --primary: #3fc1b3;
+  --primary-foreground: #00211e;
+  --secondary: #0f3330;
+  --secondary-foreground: #8de0d6;
+  --muted: #2c2c2e;
+  --muted-foreground: #98989d;
+  --accent: #2c2c2e;
+  --border: rgb(84 84 88 / 0.55);
+  --destructive: #ff6961;
+  --success: #6fd88a;
+  --success-bg: #12301b;
+  --warning: #ffb35c;
+  --warning-bg: #3a2610;
+  --surface-subtle: #1c1c1e;
+  --surface-highlight: #10302d;
+  --stage: #0b0b0c;
+  --header-glass: rgb(22 22 23 / 0.72);
+}
+
+/* Type: the platform's own face, tabular figures for every quantity. */
+body,
+button,
+input,
+select,
+textarea,
+.workbench-main h1,
+.workbench-main h2,
+.workbench-main h3 {
+  font-family: var(--system);
+}
+body {
+  font-size: 15px;
+  letter-spacing: -0.006em;
+}
+.numeric,
+.review-amount strong,
+.inspection-reference dd,
+.wall-area,
+.uncertainty,
+.detail-list dd,
+.font-mono,
+code {
+  font-family: var(--system) !important;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+.workbench-main h1 {
+  font-size: clamp(32px, 4.4vw, 44px);
+  line-height: 1.08;
+  font-weight: 700;
+  letter-spacing: -0.028em;
+}
+.workbench-main h2 {
+  font-weight: 650;
+  letter-spacing: -0.018em;
+}
+h1[tabindex="-1"]:focus {
+  outline: none;
+}
+
+/* Labels that shouted in capitals or numbered a non-sequence go quiet. */
+.section-kicker,
+.step-index {
+  display: none;
+}
+.heading-meta .section-kicker {
+  display: inline;
+  font-family: var(--system);
+  font-size: 13px;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--muted-foreground);
+}
+
+/* Header: translucent material that the page scrolls under. */
+.workbench-header {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  background: var(--header-glass);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  backdrop-filter: saturate(180%) blur(20px);
+  border-bottom: 0.5px solid var(--border);
+  min-height: 56px;
+}
+.wordmark {
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  font-size: 19px;
+}
+.wordmark-symbol {
+  border: 0;
+  border-radius: 7px;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  width: 26px;
+  height: 26px;
+}
+.header-divider {
+  display: none;
+}
+.product-label {
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+
+/* Controls: pill buttons, soft fields. */
+[data-slot="button"] {
+  border-radius: 980px;
+  font-weight: 550;
+  letter-spacing: -0.01em;
+}
+[data-slot="button"][data-size="icon"] {
+  border-radius: 50%;
+}
+[data-slot="native-select"],
+[data-slot="input"],
+[data-slot="textarea"] {
+  border-radius: 10px;
+}
+[data-slot="badge"] {
+  border-radius: 980px;
+  border-color: transparent;
+  font-weight: 550;
+}
+[data-slot="badge"][data-variant="outline"]:not([data-status]) {
+  background: var(--muted);
+  color: var(--muted-foreground);
+}
+[data-slot="badge"][data-status="review"] {
+  background: var(--warning-bg);
+  color: var(--warning);
+}
+[data-slot="badge"][data-status="ok"],
+[data-slot="badge"][data-status="clear"],
+[data-slot="badge"][data-status="matched"] {
+  background: var(--success-bg);
+  color: var(--success);
+}
+
+/* Grouped inset panels on the grey canvas. */
+.panel,
+.register-empty,
+.inspection-register,
+.worked-example,
+.evidence-files,
+.evidence-checklist,
+.report-action,
+.supporting-evidence,
+.upload-start {
+  background: var(--card);
+  border: 0;
+  border-radius: var(--panel-radius);
+  box-shadow: none;
+}
+.panel {
+  overflow: hidden;
+}
+.panel + .panel {
+  margin-top: 20px;
+}
+.evidence-files,
+.evidence-checklist {
+  padding: 24px;
+}
+.evidence-workspace {
+  gap: 20px;
+}
+.evidence-checklist {
+  border-left: 0;
+  align-self: start;
+}
+.dossier-file {
+  border: 0;
+  border-radius: 0;
+}
+.dossier-files {
+  border-top: 0;
+}
+.dossier-files > * + * {
+  border-top: 0.5px solid var(--border);
+}
+.worked-example {
+  padding: 20px;
+  border-top: 0;
+  border-bottom: 0;
+  margin-top: 20px;
+}
+.worked-example img {
+  border-radius: 12px;
+}
+.inspection-register {
+  overflow: hidden;
+}
+.register-row + .register-row {
+  border-top: 0.5px solid var(--border);
+}
+
+/* Home: the steps sit in one grouped panel, without rules or numbers. */
+.start-brief {
+  border-top: 0;
+  margin-top: 40px;
+}
+.workflow-intro {
+  background: var(--card);
+  border-radius: var(--panel-radius);
+  border: 0;
+  overflow: hidden;
+}
+.workflow-intro > li,
+.workflow-intro > li:first-child,
+.workflow-intro > li:last-child {
+  border: 0;
+  padding: 24px 28px;
+}
+.workflow-intro > li + li {
+  border-left: 0.5px solid var(--border);
+}
+.session-note {
+  color: var(--muted-foreground);
+}
+
+/* Steps: a segmented control. */
+.journey-list {
+  display: inline-grid;
+  grid-auto-flow: column;
+  grid-template-columns: none;
+  width: fit-content !important;
+  justify-self: start;
+  max-width: 100%;
+  padding: 3px;
+  gap: 2px;
+  border: 0;
+  border-radius: 11px;
+  background: var(--muted);
+}
+.journey-list [data-slot="tabs-trigger"] {
+  min-height: 34px;
+  padding: 6px 18px;
+  border-radius: 8px;
+  justify-content: center;
+  text-align: center;
+  font-weight: 550;
+  font-size: 14px;
+  color: var(--foreground);
+  white-space: nowrap;
+}
+.journey-list [data-slot="tabs-trigger"]::after {
+  display: none;
+}
+.journey-list [data-slot="tabs-trigger"][data-state="active"] {
+  background: var(--card);
+  box-shadow:
+    0 1px 1px rgb(0 0 0 / 0.04),
+    0 3px 8px rgb(0 0 0 / 0.1);
+}
+.dark .journey-list [data-slot="tabs-trigger"][data-state="active"] {
+  background: #636366;
+}
+.journey-number {
+  display: none;
+}
+
+/* Notices: tinted, rounded, no rules. */
+.sample-notice {
+  border: 0;
+  border-radius: 14px;
+  background: var(--secondary);
+  color: var(--secondary-foreground);
+}
+
+/* Review: the amount reads as the answer, in the overlay's teal family. */
+.review-context {
+  border: 0;
+}
+.review-amount {
+  border-left: 0;
+  background: var(--card);
+  border-radius: var(--panel-radius);
+  padding: 20px 22px;
+}
+.review-amount strong {
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+.difference-value {
+  color: var(--warning);
+  font-weight: 600;
+}
+.statement-panel [data-slot="table-head"] {
+  font-size: 12px;
+  font-weight: 550;
+  color: var(--muted-foreground);
+  background: transparent;
+}
+.statement-panel [data-slot="table-row"] {
+  border-color: var(--border);
+}
+.statement-panel [data-slot="table-header"] [data-slot="table-row"] {
+  background: transparent;
+}
+.table-footer {
+  border-top: 0.5px solid var(--border);
+  background: transparent;
+}
+
+/* Measured wall: the overlay on a dark stage, the evidence as the object. */
+.viewer-frame,
+.evidence-image {
+  background: var(--stage);
+  border-radius: 14px;
+  overflow: hidden;
+}
+.evidence-image .measured-overlay,
+.measured-overlay {
+  max-width: 100%;
+  height: auto;
+  object-fit: contain;
+}
+.wall-details .eyebrow {
+  font-family: var(--system);
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 13px;
+  color: var(--muted-foreground);
+}
+.wall-area {
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+/* Hand-offs between steps. */
+.section-next {
+  border-top: 0;
+  background: var(--card);
+  border-radius: var(--panel-radius);
+  padding: 18px 22px;
+  margin-top: 28px;
+}
+.workbench-footer {
+  border-top: 0;
+  color: var(--muted-foreground);
+}
+
+/* Dialogs: larger continuous corners. */
+[data-slot="dialog-content"] {
+  border-radius: 20px;
+  border: 0;
+}
+
+/* Phones: the comparison table becomes one stacked row per work item. */
+@media (max-width: 720px) {
+  .statement-panel [data-slot="table-container"] {
+    overflow: visible;
+  }
+  .statement-panel table,
+  .statement-panel tbody,
+  .statement-panel tr,
+  .statement-panel td {
+    display: block;
+    width: 100%;
+    min-width: 0;
+  }
+  .statement-panel [data-slot="table"] {
+    min-width: 0;
+  }
+  .statement-panel thead {
+    display: none;
+  }
+  .statement-panel tbody [data-slot="table-row"] {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px 12px;
+    padding: 16px 20px;
+  }
+  .statement-panel td,
+  .statement-panel [data-slot="table-cell"] {
+    height: auto;
+    min-height: 0;
+    padding: 0;
+    white-space: normal;
+  }
+  .statement-panel td.cell-name {
+    grid-column: 1 / -1;
+  }
+  .statement-panel td.numeric {
+    text-align: left;
+  }
+  .statement-panel td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    font-size: 12px;
+    color: var(--muted-foreground);
+    margin-bottom: 2px;
+  }
+  .statement-panel td.cell-status {
+    grid-column: 1 / 3;
+    align-self: center;
+  }
+  .statement-panel td.cell-action {
+    grid-column: 3;
+    justify-self: end;
+  }
+  .journey-list {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+    width: 100% !important;
+  }
+  .journey-list [data-slot="tabs-trigger"] {
+    padding: 6px 8px;
+    font-size: 13px;
+    white-space: normal;
+  }
+  .workflow-intro > li + li {
+    border-left: 0;
+    border-top: 0.5px solid var(--border);
+  }
+}
+
+@media (max-width: 640px) {
+  .evidence-image {
+    height: auto;
+    aspect-ratio: auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workbench-header {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    background: var(--background);
+  }
+}
+@media print {
+  .workbench-header {
+    position: static;
+    backdrop-filter: none;
+  }
+}
