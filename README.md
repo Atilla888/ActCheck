@@ -1,84 +1,118 @@
 # ActCheck
 
-Photo-based measurement of tiled surfaces, compared with a contractor's work statement. Results must show uncertainty, exclusions, and questions for human review before payment.
+**Check a renovation bill against photos of the finished work, before you pay.**
 
-Wall measurement is implemented in [`measure/`](measure/README.md): SAM 3.1 tile masks → a lattice-constrained homography ("the room is its own ruler") → tiled area in m² with uncertainty, exclusions, an explicit `measured` / `partial` / `unavailable` status and an overlay for every photo. It is validated on synthetic walls with exact ground truth; field accuracy against laser measurements is still pending ([validation](validation/README.md)).
+Families pay contractors from a work statement: "Wall tiling, 6.2 m² × 9,500 KZT". Most cannot verify that number, and a tape measure does not settle the argument. ActCheck reads the statement, measures the tiled walls from ordinary phone photos, and returns line-by-line findings with uncertainty and polite questions for the contractor.
 
-The local frontend in `app/frontend/` is an inspection workspace with illustrative measurements, visual evidence, statement review, local uploads, notes, and printable reports. It is not yet connected to the measurement module; its example quantities and overlays are labeled synthetic fixtures.
+Tile is laid on a regular grid and its size is printed on the box, so **the room is its own ruler**. SAM 3.1 finds the tiles, and their lattice recovers the wall plane and its scale without a reference object or a depth sensor.
 
-## Measure a wall
+Problem statement: **Build for Your World**.
+
+![Tiles recognised on a synthetic wall, with the area and its uncertainty](data/samples/demo/wall_1_overlay.jpg)
+
+*Synthetic demo wall: teal tiles matched the lattice, the caption gives the area ± 2σ.*
+
+## Worked example
+
+The bundled example uses a synthetic statement with planted errors and a synthetic wall. It runs the real agent on a stored SAM measurement.
+
+| Line | Billed | Measured | Finding |
+| --- | --- | --- | --- |
+| Removing old tile | 4.5 m² | not measurable | Asks for photos taken before the work |
+| Waterproofing | 3 m² | not measurable | Hidden work: asks for photos or a hidden-works record |
+| Wall tiling | 6.2 m² | 2.69 m² | **Over-billed** |
+| Grouting | 6.2 m² | 2.69 m² | **Over-billed**; also 6.2 × 800 = 4,960, but the statement says 5,960 |
+| Faucet installation | 1 pcs | not measurable | Not checked by photo |
+
+Result: the camera checked 70% of the statement's amount and found at least 20,991 KZT to clarify. That figure is the lower bound of the difference, for a conversation with the contractor, not a verdict.
+
+## How Meta's models are used
+
+| Model | Job | Why it matters |
+| --- | --- | --- |
+| **SAM 3.1** (Meta Model API) | Segments every tile on the full frame and nine overlapping crops; also finds doors, windows, mirrors, bathtubs and the floor; counts objects such as sockets | SAM is used as a **measuring instrument**. Tile masks become a homography from image to wall plane, in millimetres |
+| **Muse Spark 1.3** (Meta Model API) | Reads photos and PDFs of statements in Russian and Kazakh into structured lines | Handles varied layouts and phone-style photos |
+
+Models read and segment; ordinary code decides. Arithmetic, geometry, comparison and every verdict are deterministic, so a result can be traced and reproduced.
+
+## How it works
+
+1. **Parse** the statement with Muse Spark ([`agent/act_parser.py`](agent/act_parser.py)) and audit its arithmetic in code.
+2. **Plan** which lines a camera can verify ([`agent/planner.py`](agent/planner.py)). Hidden work is never guessed: it becomes a question.
+3. **Measure** each wall ([`measure/`](measure/README.md)): tile masks → lattice-constrained homography → area in m² with random and systematic uncertainty, exclusions, and an overlay a person can check.
+4. **Compare** conservatively ([`agent/compare.py`](agent/compare.py)): a line is over-billed only if `billed > measured + 2σ + hidden area`. A wall that is not fully measured gives "needs more evidence", never an accusation.
+5. **Write the protocol** in Russian, Kazakh or English ([`agent/protocol.py`](agent/protocol.py)), with an explanation and a question per line.
+
+A wall is reported as `measured`, `partial` or `unavailable`, and the warnings say how to retake the photo.
+
+## Results so far
+
+Each check is labelled by what it can show. Details and commands: [`validation/README.md`](validation/README.md).
+
+| Check | Data | Result |
+| --- | --- | --- |
+| Area on synthetic walls, through real SAM 3.1 | 16 renders with exact truth | 11 reported `measured`: median error 0.88%, max 1.33%, all within 2σ. The other 5 were flagged or refused |
+| Area with simulated masks | 40 renders | 35 `measured`: median error 0.57%, max 4.86%, all within 2σ |
+| Over-billing rule, simulated masks | Planted inflation of 0–30% | 0% false alarms; 92% of inflations of 20% or more caught |
+| Over-billing rule, SAM 3.1 renders | Planted inflation of 0–30% | 1 false alarm in 15 honest bills, from a synthetic bathtub band SAM did not recognise |
+| Statement parsing | 5 synthetic statements, including Kazakh and a phone-style photo | Every checked field matched; 2 of 2 planted errors found, no false ones |
+| Reference web photos | 20 photos with no physical scale | No area claimed: 14 `partial`, 6 refused. Shows behaviour only |
+
+**Field accuracy has not been established.** No wall has been compared with a laser or tape measurement yet ([protocol](validation/FIELD_PROTOCOL.md)). Bills in the over-billing checks are planted, not observed contractor statements.
+
+## Known limits
+
+- **The tile size drives every area.** A wrong size gives a wrong area. The form requires it and asks about likely centimetre typos, but cannot verify it.
+- **Walls must fit in the frame.** In most real interior photos we tried, the tile continues past the edge, so the wall is `partial` and the line needs more evidence.
+- **Other surfaces can be counted.** On one real photo, a blue panel and a column of different tiles were counted as area. This raises the measurement, which favours the contractor, but the number is wrong.
+- **Hard surfaces:** small mosaics, narrow stripes, curved walls and low-contrast tile are often refused.
+- **Only wall tiling is measured.** Painting, plumbing and hidden work are out of scope and become questions.
+
+## Try it
+
+**Hosted:** https://actcheck-production.up.railway.app opens the worked example, which makes no model calls.
+
+**Live analysis does not currently work on the hosted version.** From the cloud servers we tried (Railway and Render, in the US, Europe and Asia), the Meta Model API returns an empty model list and 404, while the same key works from our laptop in Kazakhstan. We have not established why. To run an analysis, use your own key locally:
 
 ```sh
-UV_CACHE_DIR="$PWD/.cache/uv" uv sync --locked
+cp .env.example .env                                  # add META_API_KEY
+docker build -t actcheck .
+docker run --env-file .env -p 8000:8000 actcheck      # open http://localhost:8000
+```
+
+An uncached wall takes 30–60 s and about 15 SAM requests (around $0.04). Measure one wall without the UI:
+
+```sh
+uv sync --locked
 uv run python -m measure.cli wall photo.jpg --tile 300x600 --source box_label
 ```
 
-This prints the `WallMeasurement` JSON and writes the overlay to `outputs/measure/`. Uncached photos are sent to SAM (about 15 requests, ~$0.04 per wall) and need `META_API_KEY` in `.env`.
+Run the tests with `uv run pytest` (offline, no model calls). Development setup: [`app/README.md`](app/README.md).
 
-## Run the frontend
+## Built during the hackathon
 
-With Node.js 24 and npm:
+All of the code and data in this repository was committed during the event, and the commit history shows it.
 
-```sh
-cd app/frontend
-npm ci
-npm run dev -- --host 127.0.0.1 --port 5173
-```
+**Timing we are disclosing.** The building period is listed as October 27 – November 4, and kickoff was October 26 at 12:00 ET. The first seven commits are dated October 26 between 13:12 and 15:38 ET, after kickoff: project setup, the model reference, the first draft of the schemas, act parser, arithmetic audit and comparison, and the first version of the frontend. Everything else came later.
 
-Open **http://127.0.0.1:5173/**. Run `npm run build` for a production build. See [frontend documentation](app/frontend/README.md) for behavior, limitations, and verification.
+**Not ours:** open-source dependencies listed in [`pyproject.toml`](pyproject.toml) and [`app/frontend/package.json`](app/frontend/package.json), including `meta-sam-parser`, OpenCV, FastAPI, React and Radix UI. AI coding assistants, including Claude Code, helped write the code.
 
-## Ownership and plan
+**Data.** Demo statements and walls are synthetic. The example bathroom image is AI-generated ([provenance](app/frontend/ASSETS.md)). The 20 reference photos are from Pexels and are not committed; [`bathroom_tiles_20/sources.csv`](bathroom_tiles_20/sources.csv) lists their sources. Private photos and API keys stay out of the repository.
 
-- **Atilla / B:** `measure/`, `validation/`, measurement tests, overlays, and field evidence.
-- **Teammate / A:** `agent/`, `app/` including the frontend, protocol export, deployment, and submission.
-- **Shared:** `schemas/`; the draft in the team plan is awaiting agreement on October 27.
-
-The frontend was implemented at the user's subsequent request. Coordinate its backend integration with teammate A; the shared measurement schemas remain unchanged.
-
-Read the [model access instructions](docs/MODEL_ACCESS.md). Team and personal planning documents are maintained locally and excluded from this repository.
-
-## Local setup
-
-Use Python 3.12 and `uv` from the repository root:
-
-```sh
-UV_CACHE_DIR="$PWD/.cache/uv" uv sync --locked
-```
-
-The optional application dependencies are reserved for teammate A:
-
-```sh
-UV_CACHE_DIR="$PWD/.cache/uv" uv sync --locked --group app
-```
-
-For a new checkout, copy `.env.example` to `.env` and run `chmod 600 .env`. Fill the credentials locally; do not paste keys into chat or commit them. The standalone validation client loads this server-side configuration. Model requests upload selected photos and use API credits; completed identical requests can reuse the local cache. The frontend remains in example mode.
-
-## Folder layout
+## Repository
 
 | Path | Purpose |
 | --- | --- |
-| `schemas/` | Shared Pydantic contract, pending team agreement |
-| `measure/` | SAM client and cache, lattice geometry, area and uncertainty, overlays, CLI |
-| `validation/` | Room measurements, accuracy, ROC, and ablation |
-| `agent/` | Statement parsing, planning, comparison, protocol |
-| `app/frontend/` | Working React/Vite inspection frontend; local example mode |
-| `app/` | Future FastAPI service and integration |
-| `tests/` | Offline benchmark, crop geometry, deduplication, and analysis checks |
-| `data/samples/` | Consented, anonymized public fixtures only |
-| `data/private/` | Private room photos and field records; ignored |
-| `data/cache/` | Private model responses and derived cache; ignored |
-| `outputs/` | Generated overlays and reports; ignored |
-| `docs/` | Access and preparation notes |
+| `agent/` | Statement parsing, arithmetic audit, planning, comparison, protocol |
+| `measure/` | SAM client, lattice geometry, area and uncertainty, overlays, CLI |
+| `validation/` | Synthetic evaluation, planted-inflation ROC, reference run, field protocol |
+| `app/server/` | FastAPI: runs inspections, serves the UI |
+| `app/frontend/` | React/Vite interface in English, Russian and Kazakh |
+| `schemas/` | Shared Pydantic contract |
+| `tests/` | Offline, deterministic tests |
+| `data/samples/` | Synthetic public fixtures |
+| `docs/` | Model access notes |
 
-Private photos, consent records, and room notes stay in `data/private/`. Publish a reviewed, anonymized validation table only after checking permission. A tracked empty `validation/rooms.csv` provides the planned columns; do not add identifying field notes to it.
+**Team:** Atilla Kenebay (measurement, validation, frontend) and Miras Auganbayev (agent, API, integration).
 
-## Readiness
-
-- Preparation checks cover locked offline dependency sync, Python 3.12 imports, valid TOML, and Git exclusions for secrets/private data. Frontend build and browser checks are documented in its README.
-- Measurement: `measure_wall` / `measure_room` / `count_objects` implement team plan §5.1 on the shared schema; 121 offline tests pass. On 16 synthetic renders segmented by SAM 3.1, the 11 walls reported as `measured` are within 1.33 % (all within 2σ); the other five are flagged `partial` or refused. Synthetic accuracy is not field accuracy.
-- Field check: 1–2 laser-measured walls are planned ([protocol](validation/FIELD_PROTOCOL.md)); no field data exists yet. The 20 collected web photos have no physical scale and only show fit/refusal behaviour.
-- The standalone SAM benchmark has been exercised on the collected photos. Credentials stay in the ignored local `.env`.
-- Meta API reference material is available in `.claude/skills/meta-model-api/SKILL.md`. Model access setup and unresolved details are recorded in `docs/MODEL_ACCESS.md`.
-- The repository remote is `https://github.com/Atilla888/ActCheck.git`. Frontend development runs locally; no hosted deployment has been created.
-- Gates: the October 27 mask gate was not met on full frames (3/20) and reached 12/20 screened candidates with crops; the lattice now tolerates missing and merged masks instead. The ≤3 % room gate awaits field data.
-- Integration: the measurement API, statuses and example JSON for the agent are documented in [`measure/README.md`](measure/README.md); wiring into `app/` and the agent is teammate A's.
+Licensed under [MIT](LICENSE).
