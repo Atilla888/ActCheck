@@ -53,7 +53,7 @@ Each check is labelled by what it can show. Details and commands: [`validation/R
 | --- | --- | --- |
 | Area on synthetic walls, through real SAM 3.1 | 16 renders with exact truth | 11 reported `measured`: median error 0.89%, max 2.44%, all within 2σ. The other 5 were flagged or refused |
 | Area with simulated masks | 40 renders | 34 `measured`: median error 0.63%, max 4.4%, all within 2σ |
-| Over-billing rule, simulated masks | Planted inflation of 0–30% | 0% false alarms; 92% of inflations of 20% or more caught |
+| Over-billing rule, simulated masks | Planted inflation of 0–30% | 0% false alarms; 58% of 20% inflations and 86% of 30% inflations caught |
 | Over-billing rule, SAM 3.1 renders | Planted inflation of 0–30% | 1 false alarm in 15 honest bills, from a synthetic bathtub band SAM did not recognise |
 | Statement parsing | 5 synthetic statements, including Kazakh and a phone-style photo | Every checked field matched; 2 of 2 planted errors found, no false ones |
 | Reference web photos | 20 photos with no physical scale | No area claimed: 14 `partial`, 6 refused. Shows behaviour only |
@@ -64,7 +64,8 @@ Each check is labelled by what it can show. Details and commands: [`validation/R
 
 - **The tile size drives every area.** A wrong size gives a wrong area. The form requires it and asks about likely centimetre typos, but cannot verify it.
 - **Walls must fit in the frame.** In most real interior photos we tried, the tile continues past the edge, so the wall is `partial` and the line needs more evidence.
-- **Other surfaces can be counted.** On one real photo, a blue panel and a column of different tiles were counted as area. This raises the measurement, which favours the contractor, but the number is wrong.
+- **Other surfaces.** A mask unlike every matched tile in colour, such as a panel or a different tile, is not counted but is allowed for, so it cannot cause an accusation. A surface of similar colour can still be counted, and a different tile of exactly the same size counts as part of the grid.
+- **Tile can go uncounted.** On one real photo of a screen, two rows of tile were not counted. The wall was flagged `partial`, so the line needs more evidence.
 - **Hard surfaces:** small mosaics, narrow stripes, curved walls and low-contrast tile are often refused.
 - **Only wall tiling is measured.** Painting, plumbing and hidden work are out of scope and become questions.
 

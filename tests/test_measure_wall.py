@@ -11,6 +11,7 @@ from PIL import Image
 
 import measure
 from measure.cli import main
+from measure.lattice import fit_lattice
 from measure.sam_client import Segmentation, SegmentationError
 from schemas.measure import RoomMeasurement, TileSpec, WallMeasurement
 from validation.synthetic import SyntheticWall, fake_concept, fake_detections, render_wall
@@ -54,6 +55,36 @@ def test_measured_wall(tmp_path):
     assert result.tiled_area_m2 == pytest.approx(render.tiled_area_m2, rel=0.01)
     assert result.warnings == []
     assert Path(result.overlay_png).exists()
+
+
+def test_large_other_surface_is_partial(tmp_path):
+    path, render = photo(tmp_path, "w1", seed=41, fill=0.7)
+    size = (render.image.shape[1], render.image.shape[0])
+    tiles = fake_detections(render, seed=41)
+    fit = fit_lattice(tiles, TILE)
+    edge = max(fit.tiles, key=lambda t: t.i).i + 1
+    for column in (edge, edge + 1):  # narrower than a tile, so they stay off the lattice
+        for j in sorted({t.j for t in fit.tiles}):
+            x0, y0, x1, y1 = fit.cell_rect(column, j)
+            x1 = x0 + 0.55 * (x1 - x0)
+            polygon = fit.to_image([[x0 + 5, y0 + 5], [x1, y0 + 5], [x1, y1 - 5], [x0 + 5, y1 - 5]])
+            cv2.fillPoly(render.image, [np.round(polygon).astype(np.int32)], (20, 60, 200))
+            detection = fake_concept(polygon, "tile", size)
+            detection["id"] = f"other:{column}:{j}"
+            tiles.append(detection)
+    Image.fromarray(render.image).save(path)
+    result = measure.measure_wall(
+        str(path),
+        TILE,
+        "w1",
+        (),
+        output_dir=tmp_path,
+        segmenter=lambda image, concepts: Segmentation(size, tiles, {}, 1),
+    )
+    assert result.status == "partial"
+    assert "other_surface" in result.warnings
+    assert [r.reason for r in result.excluded if r.label == "other_surface"] == ["not_visible"]
+    assert result.tiled_area_m2 < 1.01 * render.tiled_area_m2  # none of the columns was counted
 
 
 def test_unreadable_image(tmp_path):

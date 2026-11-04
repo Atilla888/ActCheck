@@ -121,6 +121,12 @@ carry large errors by design (SAM saw part of the wall; all were flagged), and t
 render was refused. Renders are cleaner than real bathrooms: this is evidence that the geometry
 is right, not field accuracy.
 
+The other-surface colour check (masks accepted by geometry but unlike every lattice tile become a
+`not_visible` allowance) was checked on the SAM-like sweep: still 34/40 measured, all within 2σ, the
+same detection rates and AUC 0.943 (0.942 without it). The SAM 3.1 row above predates it and was not
+re-run. On a real photo with a blue panel and a column of grey tile, 5.02 m² fell to 4.53 m² with
+both out of the count; no ground truth exists for that photo.
+
 **Planted-inflation ROC** (`roc.py`). Bills inflated 0–30 % over known truth; the agent's rule
 `billed > measured + k·σ + hidden`, walls that are not `measured` never flag (the agent answers
 `incomplete`). At k = 2: SAM-like masks — no false alarms, 58 % of 20 % inflations caught (hidden

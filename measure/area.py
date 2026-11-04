@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 
 import cv2
 import numpy as np
+from PIL import Image
 from scipy import ndimage
 
 from measure.probe import uncounted_tiles
@@ -34,6 +35,9 @@ RECTANGULARITY_MIN = 0.75
 ANGLE_TOLERANCE_DEG = 10
 GAP_CELLS = 1.6  # missed tiles bridged along rows and columns; doors are wider
 EXTEND_CELLS = 2  # at most this many missed edge tiles are inferred per row or column end
+OTHER_SURFACE = "other_surface"  # tile-shaped masks whose colour matches no lattice tile
+BRIGHTNESS_RATIO = 0.5  # |ln(L / L_tile)| beyond this: shadow on the same tile stays within it
+CHROMA_DISTANCE = 15  # Lab a/b units beyond this
 
 
 def tile_tolerance_mm(source):
@@ -122,6 +126,15 @@ def measure_area(fit, detections, image_size, tile, concepts=None, *, seed=0, im
     accepted, partial_ids = _accept(
         fit, detections, labels, cells, plane, blocked, erosion, exclusions
     )
+    others = _other_surfaces(fit, detections, image, partial_ids, plane) if image else []
+    if others:
+        other = plane.mask(others) & plane.frame & ~cells
+        masks[OTHER_SURFACE] = other
+        blocked |= other
+        exclusions |= other
+        accepted, partial_ids = _accept(
+            fit, detections, labels, cells, plane, blocked, erosion, exclusions
+        )
     grow = max(0, int(round((erosion + tile.grout_mm / 2) / plane.res)))
     if grow:
         accepted = cv2.dilate(accepted.astype(np.uint8), np.ones((2 * grow + 1,) * 2, np.uint8))
@@ -306,6 +319,54 @@ def _erosion_mm(fit, detections, labels, plane):
     if not insets:
         return 0.0
     return float(np.clip(np.median(insets), 0, 0.05 * min(cw, ch)))
+
+
+def _other_surfaces(fit, detections, image, accepted_ids, plane):
+    """Accepted non-lattice masks unlike every lattice tile: a panel, a column of other tile.
+
+    They are not this tile, but they may be tiled: they become a not_visible allowance, so a
+    decor band can never turn into an accusation. Comparing with every lattice tile, not their
+    average, keeps mixed-colour walls and lighting falloff across the wall within tolerance.
+    """
+    lab = cv2.cvtColor(
+        np.asarray(image.convert("RGB").resize(plane.small, Image.Resampling.BILINEAR)),
+        cv2.COLOR_RGB2LAB,
+    ).astype(np.float64)
+    by_id = {d["id"]: d for d in detections}
+    colours = [_colour(by_id[t.det_id], lab, plane.scale) for t in fit.tiles]
+    reference = np.array([c for c in colours if c is not None])
+    if not len(reference):
+        return []
+    found = []
+    for detection_id in accepted_ids:
+        colour = _colour(by_id[detection_id], lab, plane.scale)
+        if colour is None:
+            continue
+        brightness = np.abs(np.log((colour[0] + 1) / (reference[:, 0] + 1)))
+        chroma = np.hypot(*(colour[1:] - reference[:, 1:]).T)
+        if ((brightness > BRIGHTNESS_RATIO) | (chroma > CHROMA_DISTANCE)).all():
+            found.append(by_id[detection_id])
+    return found
+
+
+def _colour(detection, lab, scale):
+    """Median Lab colour inside a mask, away from its edges and the joints; None if too small."""
+    polygons = [
+        np.round(np.asarray(c["points"]) * scale).astype(np.int32)
+        for c in detection["contours"]
+        if not c.get("hole") and len(c["points"]) >= 3
+    ]
+    if not polygons:
+        return None
+    x0, y0 = np.min([p.min(axis=0) for p in polygons], axis=0).clip(0)
+    x1, y1 = np.max([p.max(axis=0) for p in polygons], axis=0) + 1
+    crop = lab[y0:y1, x0:x1]
+    if not crop.size:
+        return None
+    mask = np.zeros(crop.shape[:2], np.uint8)
+    cv2.fillPoly(mask, [p - (x0, y0) for p in polygons], 1)
+    inner = cv2.erode(mask, np.ones((5, 5), np.uint8)) > 0
+    return np.median(crop[inner], axis=0) if inner.any() else None
 
 
 def _accept(fit, detections, labels, cells, plane, blocked, erosion=0.0, exclusions=None):
@@ -558,7 +619,9 @@ def _exclusions(region, undetected, masks, plane):
             if concept in BLOCKING_ONLY:
                 continue
             opening = concept in OPENING_CONCEPTS
-            part = mask & (box if opening else band) & ~claimed
+            # Other surfaces may lie beyond the counted outline and still be billed as tiling.
+            reach = True if concept == OTHER_SURFACE else box if opening else band
+            part = mask & reach & ~claimed
             claimed |= part
             if part.any():
                 outlines[concept] = plane.outlines(part)
