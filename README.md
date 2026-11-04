@@ -71,9 +71,7 @@ Each check is labelled by what it can show. Details and commands: [`validation/R
 
 ## Try it
 
-**Hosted:** https://actcheck-production.up.railway.app opens the worked example, which makes no model calls.
-
-**Live analysis does not currently work on the hosted version.** From the cloud servers we tried (Railway and Render, in the US, Europe and Asia), the Meta Model API returns an empty model list and 404, while the same key works from our laptop in Kazakhstan. We have not established why. To run an analysis, use your own key locally:
+**There is no hosted version.** From the cloud servers we tried (Railway and Render, in the US, Europe and Asia), the Meta Model API returned an empty model list and 404, while the same key works from our laptop in Kazakhstan. We have not established why, so we took the deployments down. Run ActCheck locally with your own key; the worked example makes no model calls:
 
 ```sh
 cp .env.example .env                                  # add META_API_KEY
