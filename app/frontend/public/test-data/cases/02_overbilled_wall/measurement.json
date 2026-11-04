@@ -1,0 +1,96 @@
+{
+  "case": "02_overbilled_wall",
+  "story": "The act bills about 30 % more wall tiling than exists, and the grout line's amount does not match quantity × price.",
+  "tile_to_enter": {
+    "width_mm": 300,
+    "height_mm": 300,
+    "grout_mm": 2
+  },
+  "wall": {
+    "wall_w_mm": 2700,
+    "wall_h_mm": 2400,
+    "tile_w_mm": 300,
+    "tile_h_mm": 300,
+    "grout_mm": 2,
+    "bond": "stack",
+    "door": null,
+    "occluder_h_mm": 0,
+    "camera": {
+      "yaw_deg": -8,
+      "pitch_deg": 3,
+      "gloss": 0.0
+    }
+  },
+  "truth": {
+    "tiled_area_m2": 6.48,
+    "visible_tiled_area_m2": 6.48,
+    "hidden_area_m2": 0.0,
+    "opening_area_m2": 0.0
+  },
+  "act": {
+    "doc_kind": "completion_act",
+    "language": "ru",
+    "currency": "KZT",
+    "lines": [
+      {
+        "line_no": 1,
+        "description_raw": "Демонтаж старой облицовки",
+        "work_type": "demolition",
+        "unit": "m2",
+        "unit_raw": "м²",
+        "quantity": 6.5,
+        "unit_price": 1200,
+        "amount_stated": 7800.0
+      },
+      {
+        "line_no": 2,
+        "description_raw": "Облицовка стены плиткой 300×300",
+        "work_type": "tiling_wall",
+        "unit": "m2",
+        "unit_raw": "м²",
+        "quantity": 8.5,
+        "unit_price": 9000,
+        "amount_stated": 76500.0
+      },
+      {
+        "line_no": 3,
+        "description_raw": "Затирка швов",
+        "work_type": "other",
+        "unit": "m2",
+        "unit_raw": "м²",
+        "quantity": 8.5,
+        "unit_price": 800,
+        "amount_stated": 7600
+      },
+      {
+        "line_no": 4,
+        "description_raw": "Установка розетки",
+        "work_type": "electrical_point",
+        "unit": "pcs",
+        "unit_raw": "шт",
+        "quantity": 2,
+        "unit_price": 3500,
+        "amount_stated": 7000
+      }
+    ],
+    "total_stated": 98900.0,
+    "vat_stated": null,
+    "parser_notes": []
+  },
+  "expected_verdict": "over_billed",
+  "actcheck": {
+    "status": "measured",
+    "warnings": [],
+    "tiled_area_m2": 6.568,
+    "sigma_random_m2": 0.036,
+    "sigma_system_m2": 0.049,
+    "excluded": [],
+    "hidden_area_m2": 0.0,
+    "tiling_line_verdict": "over_billed",
+    "measured_range_m2": [
+      6.4,
+      6.74
+    ],
+    "overbilling_min_kzt": 15858.0
+  }
+}

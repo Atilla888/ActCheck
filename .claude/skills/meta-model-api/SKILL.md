@@ -18,6 +18,7 @@ Collected from dev.meta.ai docs on 2026-10-26. Items marked **VERIFY** were not 
 ```python
 from openai import OpenAI
 import os
+
 meta = OpenAI(base_url=os.environ["META_API_BASE_URL"], api_key=os.environ["META_API_KEY"])
 ```
 
@@ -48,14 +49,23 @@ Not used: `muse-image-1.0`, `muse-wonder-1.0` (Best Creative bonus skipped).
   ```python
   import meta_sam_parser as msp
   from openai import AsyncOpenAI
-  stream = await AsyncOpenAI(base_url=..., api_key=...).responses.create(model="sam-3.1", input=[...], metadata={...}, stream=True)
+
+  stream = await AsyncOpenAI(base_url=..., api_key=...).responses.create(
+      model="sam-3.1", input=[...], metadata={...}, stream=True
+  )
+
+
   async def events():
       async for e in stream:
           yield e.model_dump()
+
+
   result = await msp.parse_responses_stream(events(), msp.image_segmentation_format()).final_result()
   masks = [r for r in result.records if isinstance(r, msp.SegmentationMaskRecord)]
   # r.mask.width/height/encoding/payload, r.bounds.left/top/right/bottom, r.confidence
-  raster = np.frombuffer(msp.decode_mask_to_raster(r.mask), np.uint8).reshape(r.mask.height, r.mask.width)
+  raster = np.frombuffer(msp.decode_mask_to_raster(r.mask), np.uint8).reshape(
+      r.mask.height, r.mask.width
+  )
   ```
 - A harmless `RuntimeError: aclose(): asynchronous generator is already running` may print at exit; ignore it or close the stream explicitly.
 
@@ -71,14 +81,22 @@ Not used: `muse-image-1.0`, `muse-wonder-1.0` (Best Creative bonus skipped).
 
 ```python
 import base64
+
+
 def img_part(path):
     b64 = base64.b64encode(open(path, "rb").read()).decode()
     return {"type": "input_image", "image_url": f"data:image/jpeg;base64,{b64}"}
 
+
 stream = meta.responses.create(
     model="sam-3.1",
-    input=[{"type": "message", "role": "user",
-            "content": [{"type": "input_text", "text": "wall tile"}, img_part("wall.jpg")]}],
+    input=[
+        {
+            "type": "message",
+            "role": "user",
+            "content": [{"type": "input_text", "text": "wall tile"}, img_part("wall.jpg")],
+        }
+    ],
     metadata={"include_confidence": "true"},
     stream=True,
 )
@@ -136,13 +154,20 @@ Image/PDF content part types: see Image understanding and File handling docs (**
 - For the bonus, the judged pipeline must actually run on Spark Open — keep the Meta-API Spark path as an explicit fallback flag, not the default.
 
 ```python
-spark_open = OpenAI(base_url="https://inference.baseten.co/v1", api_key=os.environ["BASETEN_API_KEY"])
+spark_open = OpenAI(
+    base_url="https://inference.baseten.co/v1", api_key=os.environ["BASETEN_API_KEY"]
+)
 r = spark_open.chat.completions.create(
     model="meta-models/muse-spark-open-1026",
-    messages=[{"role": "user", "content": [
-        {"type": "text", "text": "Extract all lines of this act as JSON."},
-        {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64,..."}},
-    ]}],
+    messages=[
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "Extract all lines of this act as JSON."},
+                {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64,..."}},
+            ],
+        }
+    ],
 )
 ```
 

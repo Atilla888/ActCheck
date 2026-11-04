@@ -27,16 +27,23 @@ Language and theme preferences use localStorage. If browser storage is blocked, 
 
 ## Ready-to-use test files
 
-These links work while the local server is running:
+**Help & guidance → Test cases** offers four end-to-end cases. Each has a contractor act
+(`act.jpg`), one wall photo (`wall.png`), a printable report (`report.html`: the true
+measurements, the act, the correct answer and what ActCheck returned) and the same data as JSON
+(`measurement.json`). Create an inspection with the tile size shown, upload the act as a statement
+page and the photo as a wall photo, run the analysis and compare with the report.
 
-| File | Local URL | Expected use |
-| --- | --- | --- |
-| Synthetic bathroom image | http://127.0.0.1:5173/images/example-bathroom.png | Accepted image upload and preview |
-| RU/KZ sample work statement | http://127.0.0.1:5173/test-data/sample-statement.pdf | Accepted PDF upload and preview |
-| Synthetic tile label | http://127.0.0.1:5173/test-data/tile-label.pdf | Accepted PDF; manually enter 300 × 600 mm |
-| Unsupported text file | http://127.0.0.1:5173/test-data/invalid-upload.txt | Rejected with a translated file-type message |
+| Case | Tile | True tiled area | Act bills | Correct answer | ActCheck |
+| --- | --- | --- | --- | --- | --- |
+| [Honest bill](public/test-data/cases/01_honest_bill/report.html) | 300 × 600 | 5.04 m² | 5.0 m² | no over-billing | same |
+| [Over-billed wall tiling](public/test-data/cases/02_overbilled_wall/report.html) | 300 × 300 | 6.48 m² | 8.5 m² | over-billed (plus a grout-line arithmetic error) | same |
+| [Door not deducted](public/test-data/cases/03_door_not_deducted/report.html) | 200 × 200 | 6.40 m² | 8.0 m² | over-billed | same |
+| [Kazakh act, small difference](public/test-data/cases/04_kazakh_within_tolerance/report.html) | 600 × 300 | 7.20 m² | 7.4 m² | no over-billing (inside the uncertainty) | same |
 
-Files are checked into `public/test-data/`; the photo is in `public/images/`. The editable PDF sources are the adjacent HTML files. All examples are synthetic and have no real customer data. The tile label does **not** establish the dimensions of the generated photo.
+The walls are rendered from exact geometry, so the true areas are exact; the acts are fictional.
+Regenerate them with `uv run python scripts/make_test_cases.py --measure` from the repository root
+(SAM results are cached, so a rerun costs nothing). `test-data/invalid-upload.txt` still checks
+that unsupported files are rejected.
 
 Other negative cases: an empty file, a corrupt file named `.png`, an image over 20 MB, a duplicate file, a thirteenth attachment, blank project name, or tile dimensions outside 10–2,000 mm. Rejections should be clear and should not fabricate analysis results. PDF validation checks the file type and PDF signature; full document parsing is not implemented.
 
@@ -54,9 +61,14 @@ Store real photos and field records under ignored `data/private/rooms/<room_id>/
 
 Random web photos and generated images can test the interface, but do not provide reliable metric ground truth. They cannot establish area accuracy without known tile dimensions and independent measurements.
 
-## What cannot be tested yet
+## Live analysis
 
-Live SAM segmentation, geometric area estimation, invoice parsing, and measurement accuracy require the backend integration. Adding Meta/Baseten keys alone does not enable those features. Until integration is implemented, the app can test uploads, review interactions, localization, themes, and report presentation only. Use the repository's `docs/MODEL_ACCESS.md` for account setup; keep all provider credentials server-side.
+Uploads are analysed by the backend: SAM 3.1 measures the walls and Muse Spark reads the
+statement. Run it locally with a Meta API key in `.env` (`docker build -t actcheck . && docker run
+--env-file .env -p 8000:8000 actcheck`, then open http://localhost:8000). The hosted version opens
+the worked example but cannot currently reach the Meta Model API (see the repository README).
+Without a key the interface, uploads, the worked example's fixtures, languages, themes and the
+report can all still be tested.
 
 ## Developer checks
 

@@ -87,6 +87,8 @@ uv sync --locked
 uv run python -m measure.cli wall photo.jpg --tile 300x600 --source box_label
 ```
 
+**Test cases:** in the app, Help & guidance → Test cases offers four ready inputs, each with a contractor act, a wall photo with exact known geometry and a report giving the true area and the expected verdict ([`app/frontend/public/test-data/cases/`](app/frontend/public/test-data/cases/)).
+
 Run the tests with `uv run pytest` (offline, no model calls). Development setup: [`app/README.md`](app/README.md).
 
 ## Built during the hackathon
@@ -111,6 +113,7 @@ All of the code and data in this repository was committed during the event, and 
 | `schemas/` | Shared Pydantic contract |
 | `tests/` | Offline, deterministic tests |
 | `data/samples/` | Synthetic public fixtures |
+| `scripts/` | Demo, synthetic acts and test-case generators |
 | `docs/` | Model access notes |
 
 **Team:** Atilla Kenebay (measurement, validation, frontend) and Miras Auganbayev (agent, API, integration).

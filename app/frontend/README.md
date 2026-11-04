@@ -30,23 +30,32 @@ Open http://127.0.0.1:5173/. `npm run build` checks TypeScript and creates `dist
 - Report preview, standalone HTML download, and browser print/save-to-PDF with a dedicated print layout. Unicode notes are supported by the browser's print renderer.
 - Responsive navigation, accessible dialogs, keyboard controls, reduced-motion support, and empty/error states.
 
-## Boundaries
+## How it connects to the backend
 
-All measurements, statements, and overlays in the example inspection are fixtures. The room illustration is generated; its four views do not establish four independently photographed walls. No segmentation or measurement model has analysed the image. The UI, file metadata, and exported report retain this distinction.
+`app/server` (FastAPI) serves this interface and the API. The worked example asks `/api/sample`,
+which runs the real agent on a stored SAM measurement of a synthetic wall; without the API it
+falls back to the labelled fixtures in `src/features/inspection/data.ts`. A new inspection uploads
+its statement pages and wall photos to `/api/inspections` and polls the job until the protocol is
+ready. Projects, notes and file references live only in the browser tab; reloading clears them.
+No credentials reach the frontend: the Meta API key stays on the server.
 
-New uploads do not generate sample results. Drafts show an explicit unanalysed state. Projects, notes, and file references are held only in memory for the browser tab; reloading clears them. Object URLs are revoked on removal and unmount. No credentials, private `.env`, or private source data are imported by the frontend. Do not add provider keys to `VITE_*` variables.
+**Test cases.** Help & guidance → Test cases offers four downloadable cases (act, wall photo,
+report with the true measurements, JSON) from `public/test-data/cases/`; see
+[TESTING.md](TESTING.md).
 
-The wall-tiling amount to clarify is `(48.5 − (36.9 + 1.1)) × 9,500 = 99,750 KZT`. It concerns only that line, not total savings. Hidden work is never marked as verified. Sample uncertainty is illustrative, not a validated confidence interval.
+## Appearance
 
-## Backend handoff
-
-`src/features/inspection/data.ts` contains explicitly labeled frontend view fixtures and types, not the shared Pydantic contract. The existing `schemas/` draft has not been changed. Replace fixtures with validated server responses once the team agrees on the contract; add server-side upload storage, authentication, measurement status, errors, and report generation together. Do not simply enable an analysis button against fixtures.
+`src/apple.css`, loaded after `src/index.css`, sets the current look: system type with tabular
+figures, a grey grouped canvas with white panels, a translucent header, a segmented control for
+the three steps and pill buttons. The accent is the teal of the recognised tiles in the
+measurement overlay. On phones the statement table becomes one stacked row per work item.
 
 ## Verification
 
-For the current redesign, `npm run build`, `npm run lint`, `npm run test:i18n`, and `npm run test:render` check TypeScript, code quality, translation coverage, real component rendering in six language/theme combinations, and conservative amount arithmetic. The rendering test uses server rendering and launches no browser.
-
-No Chrome or browser session was opened for this redesign, as requested. The previous layout had browser and automated accessibility checks; those results do not validate the redesigned layout. Responsive visual checks, keyboard navigation, and interactive flows need a fresh manual pass using [TESTING.md](TESTING.md).
+`npm run build`, `npm run lint`, `npm run test:i18n` and `npm run test:render` check TypeScript,
+code quality, translation coverage (English, Russian, Kazakh) and real component rendering in
+three languages × light and dark. The redesign was also checked in a headless browser at desktop
+and phone widths, in both themes.
 
 Research and design rationale: [UX research](docs/UX_RESEARCH.md), [visual direction](docs/VISUAL_DIRECTION.md).
 

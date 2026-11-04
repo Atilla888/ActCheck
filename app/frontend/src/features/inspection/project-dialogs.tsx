@@ -20,6 +20,7 @@ import { Input } from "@/components/ui/input"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { cn } from "@/lib/utils"
 import type { LocalFile, Project } from "./data"
+import { caseFile, testCases } from "./test-cases"
 
 export function NewProjectDialog({
   open,
@@ -444,27 +445,57 @@ export function CaptureGuide({
           </li>
         </ol>
         <section className="test-downloads" aria-labelledby="test-files-title">
-          <h3 id="test-files-title">{t("Test files")}</h3>
+          <h3 id="test-files-title">{t("Test cases")}</h3>
           <p>
-            {t("These synthetic files test uploads, not measurement accuracy.")}
+            {t(
+              "Each case has a contractor act, a wall photo and a report with the true measurements and the expected result. Enter the tile size shown."
+            )}
           </p>
-          <div className="download-buttons">
-            <Button variant="outline" asChild>
-              <a href="/images/example-bathroom.png" download>
-                {t("Download example photo")}
-              </a>
-            </Button>
-            <Button variant="outline" asChild>
-              <a href="/test-data/sample-statement.pdf" download>
-                {t("Download sample statement")}
-              </a>
-            </Button>
-            <Button variant="outline" asChild>
-              <a href="/test-data/tile-label.pdf" download>
-                {t("Download tile label")}
-              </a>
-            </Button>
-          </div>
+          <ul className="test-cases">
+            {testCases.map((item) => (
+              <li key={item.id}>
+                <div>
+                  <strong>{t(item.title)}</strong>
+                  <span>
+                    {t("Tile {size} mm", {
+                      size: `${item.tile[0]} × ${item.tile[1]}`,
+                    })}
+                  </span>
+                </div>
+                <div className="test-case-links">
+                  <a
+                    href={caseFile(item.id, "act.jpg")}
+                    download={`${item.id}_act.jpg`}
+                    aria-label={`${t("Act")}: ${t(item.title)}`}
+                  >
+                    {t("Act")}
+                  </a>
+                  <a
+                    href={caseFile(item.id, "wall.png")}
+                    download={`${item.id}_wall.png`}
+                    aria-label={`${t("Wall photo")}: ${t(item.title)}`}
+                  >
+                    {t("Wall photo")}
+                  </a>
+                  <a
+                    href={caseFile(item.id, "report.html")}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label={`${t("Report")}: ${t(item.title)}`}
+                  >
+                    {t("Report")}
+                  </a>
+                  <a
+                    href={caseFile(item.id, "measurement.json")}
+                    download={`${item.id}_measurement.json`}
+                    aria-label={`${t("Data")}: ${t(item.title)}`}
+                  >
+                    {t("Data")}
+                  </a>
+                </div>
+              </li>
+            ))}
+          </ul>
         </section>
       </DialogContent>
     </Dialog>

@@ -1,0 +1,99 @@
+{
+  "case": "03_door_not_deducted",
+  "story": "The wall has a 0.8 × 2.0 m doorway. The act bills the whole wall as if the door were tiled.",
+  "tile_to_enter": {
+    "width_mm": 200,
+    "height_mm": 200,
+    "grout_mm": 2
+  },
+  "wall": {
+    "wall_w_mm": 3200,
+    "wall_h_mm": 2500,
+    "tile_w_mm": 200,
+    "tile_h_mm": 200,
+    "grout_mm": 2,
+    "bond": "stack",
+    "door": [
+      1300,
+      500,
+      800,
+      2000
+    ],
+    "occluder_h_mm": 0,
+    "camera": {
+      "yaw_deg": 5,
+      "pitch_deg": 0,
+      "gloss": 0.0
+    }
+  },
+  "truth": {
+    "tiled_area_m2": 6.4,
+    "visible_tiled_area_m2": 6.4,
+    "hidden_area_m2": 0.0,
+    "opening_area_m2": 1.6
+  },
+  "act": {
+    "doc_kind": "completion_act",
+    "language": "ru",
+    "currency": "KZT",
+    "lines": [
+      {
+        "line_no": 1,
+        "description_raw": "Облицовка стены плиткой 200×200",
+        "work_type": "tiling_wall",
+        "unit": "m2",
+        "unit_raw": "м²",
+        "quantity": 8.0,
+        "unit_price": 9800,
+        "amount_stated": 78400.0
+      },
+      {
+        "line_no": 2,
+        "description_raw": "Затирка швов",
+        "work_type": "other",
+        "unit": "m2",
+        "unit_raw": "м²",
+        "quantity": 8.0,
+        "unit_price": 800,
+        "amount_stated": 6400.0
+      },
+      {
+        "line_no": 3,
+        "description_raw": "Установка порога",
+        "work_type": "other",
+        "unit": "pcs",
+        "unit_raw": "шт",
+        "quantity": 1,
+        "unit_price": 7000,
+        "amount_stated": 7000
+      }
+    ],
+    "total_stated": 91800.0,
+    "vat_stated": null,
+    "parser_notes": []
+  },
+  "expected_verdict": "over_billed",
+  "actcheck": {
+    "status": "measured",
+    "warnings": [
+      "merged_tiles"
+    ],
+    "tiled_area_m2": 6.446,
+    "sigma_random_m2": 0.069,
+    "sigma_system_m2": 0.071,
+    "excluded": [
+      {
+        "label": "door",
+        "area_m2": 1.563,
+        "reason": "opening"
+      }
+    ],
+    "hidden_area_m2": 0.0,
+    "tiling_line_verdict": "over_billed",
+    "measured_range_m2": [
+      6.17,
+      6.73
+    ],
+    "overbilling_min_kzt": 12485.0
+  }
+}

@@ -448,12 +448,15 @@ def write_reports(summaries):
         "The combined method uses ten inputs per photo versus one for the baseline; "
         "this compares candidate yield, not equal-cost performance.</p>"
     )
-    document = """<!doctype html><html lang="en"><meta charset="utf-8"><title>Tile crop
+    document = (
+        """<!doctype html><html lang="en"><meta charset="utf-8"><title>Tile crop
 experiment</title>
 <style>body{font:16px/1.6 system-ui;max-width:1200px;margin:40px auto;padding:20px}
 img{max-width:100%}td,th{padding:8px;border-bottom:1px solid #ddd;text-align:right}
 table{border-collapse:collapse}a{color:#175c46}</style><h1>Crop detection and duplicate
-removal</h1>""" + outcome + """
+removal</h1>"""
+        + outcome
+        + """
 <p>Fixed tile prompt, 3×3 overlapping crops, 1600-pixel maximum long side per crop.
 Detections are transformed to source coordinates, deduplicated, and combined with cached
 full-frame tile results.</p>
@@ -464,6 +467,7 @@ masks.</p>
 <table><tr><th>Photo</th><th>Jobs</th><th>Baseline raw</th><th>Baseline same wall</th>
 <th>Crop raw</th><th>Crop unique</th>
 <th>Combined unique</th><th>Complete wall candidates</th><th>Region</th><th>Complete</th></tr>"""
+    )
     contact = Image.new("RGB", (1600, 5 * 360), "#f7f7f4")
     for index, summary in enumerate(summaries):
         stem = f"{summary['image']:02d}"

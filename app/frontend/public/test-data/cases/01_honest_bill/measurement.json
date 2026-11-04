@@ -1,0 +1,96 @@
+{
+  "case": "01_honest_bill",
+  "story": "The contractor bills the wall tiling correctly. ActCheck should find no over-billing.",
+  "tile_to_enter": {
+    "width_mm": 300,
+    "height_mm": 600,
+    "grout_mm": 2
+  },
+  "wall": {
+    "wall_w_mm": 2400,
+    "wall_h_mm": 2100,
+    "tile_w_mm": 300,
+    "tile_h_mm": 600,
+    "grout_mm": 2,
+    "bond": "stack",
+    "door": null,
+    "occluder_h_mm": 0,
+    "camera": {
+      "yaw_deg": 6,
+      "pitch_deg": 0,
+      "gloss": 0.0
+    }
+  },
+  "truth": {
+    "tiled_area_m2": 5.04,
+    "visible_tiled_area_m2": 5.04,
+    "hidden_area_m2": 0.0,
+    "opening_area_m2": 0.0
+  },
+  "act": {
+    "doc_kind": "completion_act",
+    "language": "ru",
+    "currency": "KZT",
+    "lines": [
+      {
+        "line_no": 1,
+        "description_raw": "Демонтаж старой плитки",
+        "work_type": "demolition",
+        "unit": "m2",
+        "unit_raw": "м²",
+        "quantity": 5.0,
+        "unit_price": 1500,
+        "amount_stated": 7500.0
+      },
+      {
+        "line_no": 2,
+        "description_raw": "Облицовка стены плиткой 300×600",
+        "work_type": "tiling_wall",
+        "unit": "m2",
+        "unit_raw": "м²",
+        "quantity": 5.0,
+        "unit_price": 9500,
+        "amount_stated": 47500.0
+      },
+      {
+        "line_no": 3,
+        "description_raw": "Затирка швов",
+        "work_type": "other",
+        "unit": "m2",
+        "unit_raw": "м²",
+        "quantity": 5.0,
+        "unit_price": 800,
+        "amount_stated": 4000.0
+      },
+      {
+        "line_no": 4,
+        "description_raw": "Грунтовка стен",
+        "work_type": "other",
+        "unit": "m2",
+        "unit_raw": "м²",
+        "quantity": 5.0,
+        "unit_price": 600,
+        "amount_stated": 3000.0
+      }
+    ],
+    "total_stated": 62000.0,
+    "vat_stated": null,
+    "parser_notes": []
+  },
+  "expected_verdict": "consistent",
+  "actcheck": {
+    "status": "measured",
+    "warnings": [],
+    "tiled_area_m2": 5.085,
+    "sigma_random_m2": 0.031,
+    "sigma_system_m2": 0.028,
+    "excluded": [],
+    "hidden_area_m2": 0.0,
+    "tiling_line_verdict": "consistent",
+    "measured_range_m2": [
+      4.97,
+      5.2
+    ],
+    "overbilling_min_kzt": null
+  }
+}
