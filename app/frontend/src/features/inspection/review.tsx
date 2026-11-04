@@ -120,17 +120,17 @@ export function StatementReview({
         <TableBody>
           {rows.map((line) => (
             <TableRow key={line.id}>
-              <TableCell>
+              <TableCell className="cell-name">
                 <strong>{text(line, line.name)}</strong>
                 {!line.live && (
                   <span className="cell-description">{t(line.detail)}</span>
                 )}
               </TableCell>
-              <TableCell className="numeric">
+              <TableCell className="numeric" data-label={t("Statement")}>
                 {number(line.claimed)}{" "}
                 <span className="unit">{unit(line)}</span>
               </TableCell>
-              <TableCell className="numeric">
+              <TableCell className="numeric" data-label={t("Measured")}>
                 {line.measured !== null ? (
                   <>
                     {number(line.measured)}{" "}
@@ -143,7 +143,7 @@ export function StatementReview({
                   <span className="unavailable">{t("Not verified")}</span>
                 )}
               </TableCell>
-              <TableCell className="numeric">
+              <TableCell className="numeric" data-label={t("Difference")}>
                 {line.measured !== null ? (
                   <span
                     className={
@@ -158,10 +158,10 @@ export function StatementReview({
                   <span className="unavailable">—</span>
                 )}
               </TableCell>
-              <TableCell>
+              <TableCell className="cell-status">
                 <StatusBadge status={line.status} />
               </TableCell>
-              <TableCell>
+              <TableCell className="cell-action">
                 <Button
                   size="sm"
                   variant="outline"
