@@ -25,7 +25,7 @@ docker run --env-file .env -p 8000:8000 actcheck     # UI and API on :8000
 | Method | Path | |
 | --- | --- | --- |
 | GET | `/api/health` | `{ok, model_key}` |
-| GET | `/api/sample?lang=ru\|kk\|en` | The worked example: real agent, synthetic act, stored SAM measurement of a synthetic wall. No model calls. |
+| GET | `/api/sample?lang=ru\|kk\|en` | The worked example: real agent, synthetic act, stored measurement of a synthetic wall from simulated masks. No model calls. |
 | POST | `/api/inspections` | multipart: `act` (images or PDF, 1+), `walls` (photos), `tile_width_mm`, `tile_height_mm`, `grout_mm`, `tile_source`, `lang` → `202 {id, status}` |
 | GET | `/api/inspections/{id}` | `{status: queued\|parsing\|measuring\|counting\|protocol\|done\|failed, result, error}` |
 | GET | `/api/files/jobs/…`, `/api/files/sample/…` | Uploaded pages and measurement overlays referenced by `result` |
