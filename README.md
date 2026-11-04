@@ -14,7 +14,7 @@ Problem statement: **Build for Your World**.
 
 ## Worked example
 
-The bundled example uses a synthetic statement with planted errors and a synthetic wall. It runs the real agent on a stored SAM measurement.
+The bundled example uses a synthetic statement with planted errors and a synthetic wall. It runs the real agent on a stored measurement made from simulated masks, without calling SAM.
 
 | Line | Billed | Measured | Finding |
 | --- | --- | --- | --- |
